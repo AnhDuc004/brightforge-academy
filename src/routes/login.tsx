@@ -3,7 +3,7 @@ import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { Loader2, Mail, Lock, ShieldCheck, AlertTriangle } from "lucide-react";
+import { Loader2, Mail, Lock, LogIn, AlertTriangle } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
 
@@ -23,14 +23,14 @@ import {
 import { Input } from "@/components/ui/input";
 
 const loginSchema = z.object({
-  email: z.string().min(1, "Email is required.").email("Enter a valid email address."),
-  password: z.string().min(1, "Password is required."),
+  email: z.string().min(1, "Vui lòng nhập email.").email("Email không hợp lệ."),
+  password: z.string().min(1, "Vui lòng nhập mật khẩu."),
 });
 
 type LoginValues = z.infer<typeof loginSchema>;
 
 export const Route = createFileRoute("/login")({
-  head: () => ({ meta: [{ title: "Login · ExamForge" }] }),
+  head: () => ({ meta: [{ title: "Đăng nhập · ExamForge" }] }),
   component: LoginPage,
 });
 
@@ -40,10 +40,7 @@ function LoginPage() {
 
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-    },
+    defaultValues: { email: "", password: "" },
   });
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -55,7 +52,7 @@ function LoginPage() {
       const token = pickAccessToken(response.data) ?? "mock-access-token";
       setAccessToken(token);
 
-      toast.success("Logged in successfully.");
+      toast.success("Đăng nhập thành công.");
       router.navigate({ to: "/", replace: true });
     } catch (error) {
       const isValidationError = axios.isAxiosError(error) && error.response?.status === 422;
@@ -70,48 +67,25 @@ function LoginPage() {
       });
 
       const hasFieldErrors = Object.keys(fieldErrors).length > 0;
-      if (!hasFieldErrors) {
-        setServerError(message);
-      }
-
-      if (!isValidationError) {
-        toast.error(message);
-      }
-
-      if (isValidationError) {
-        return;
-      }
+      if (!hasFieldErrors) setServerError(message);
+      if (!isValidationError) toast.error(message);
+      if (isValidationError) return;
     }
   });
 
   return (
     <AuthShell
-      eyebrow="Secure sign in"
-      title="Welcome back."
-      description="Use your workspace account to continue into the dashboard. Backend validation errors will appear next to the exact input."
-      footerPrompt="No account yet?"
+      eyebrow="Chào mừng trở lại"
+      title="Đăng nhập"
+      description="Nhập thông tin tài khoản để tiếp tục vào bảng điều khiển của bạn."
+      footerPrompt="Chưa có tài khoản?"
       footerLinkTo="/register"
-      footerLinkLabel="Create one"
+      footerLinkLabel="Tạo tài khoản"
     >
-      <div className="mb-5 rounded-2xl border border-brand/20 bg-brand/10 p-4">
-        <div className="flex items-start gap-3">
-          <div className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand text-ink">
-            <ShieldCheck className="h-4.5 w-4.5" />
-          </div>
-          <div>
-            <div className="text-sm font-medium text-foreground">Protected workspace access</div>
-            <div className="mt-1 text-sm leading-6 text-muted-foreground">
-              Sign in with the credentials validated by your backend. We persist the access token
-              locally so dashboard navigation stays seamless.
-            </div>
-          </div>
-        </div>
-      </div>
-
       {serverError && (
         <Alert variant="destructive" className="mb-5 border-destructive/25 bg-destructive/5">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Login failed</AlertTitle>
+          <AlertTitle>Đăng nhập thất bại</AlertTitle>
           <AlertDescription>{serverError}</AlertDescription>
         </Alert>
       )}
@@ -146,13 +120,13 @@ function LoginPage() {
             render={({ field }) => (
               <FormItem>
                 <div className="flex items-center justify-between">
-                  <FormLabel>Password</FormLabel>
+                  <FormLabel>Mật khẩu</FormLabel>
                   <Button
                     type="button"
                     variant="link"
                     className="h-auto p-0 text-xs font-medium text-brand hover:no-underline"
                   >
-                    Forgot password?
+                    Quên mật khẩu?
                   </Button>
                 </div>
                 <FormControl>
@@ -162,7 +136,7 @@ function LoginPage() {
                       {...field}
                       type="password"
                       autoComplete="current-password"
-                      placeholder="Enter your password"
+                      placeholder="Nhập mật khẩu"
                       className="h-11 pl-9"
                     />
                   </div>
@@ -172,15 +146,15 @@ function LoginPage() {
             )}
           />
 
-          <div className="flex items-center justify-between pt-1 text-sm">
-            <label className="flex items-center gap-2 text-muted-foreground">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border border-input accent-[var(--brand)]"
-              />
-              Remember me
+          <div className="flex items-center gap-2 pt-1 text-sm">
+            <input
+              type="checkbox"
+              id="remember"
+              className="h-4 w-4 rounded border border-input accent-[var(--brand)]"
+            />
+            <label htmlFor="remember" className="cursor-pointer text-muted-foreground">
+              Ghi nhớ đăng nhập
             </label>
-            <span className="text-xs text-muted-foreground">Token stored in localStorage</span>
           </div>
 
           <Button
@@ -191,26 +165,17 @@ function LoginPage() {
             {form.formState.isSubmitting ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Signing in...
+                Đang đăng nhập...
               </>
             ) : (
               <>
-                Sign in
-                <ShieldCheck className="h-4 w-4" />
+                Đăng nhập
+                <LogIn className="h-4 w-4" />
               </>
             )}
           </Button>
         </form>
       </Form>
-
-      <div className="mt-5 rounded-2xl border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
-        <div className="font-medium text-foreground">Demo notes</div>
-        <ul className="mt-2 space-y-1.5">
-          <li>• Backend validation errors are shown inline.</li>
-          <li>• Success stores `access_token` and redirects to the dashboard.</li>
-          <li>• This flow is ready for your real BE response format.</li>
-        </ul>
-      </div>
     </AuthShell>
   );
 }
