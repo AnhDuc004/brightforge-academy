@@ -74,13 +74,16 @@ export function AppSidebar() {
                 return (
                   <li key={item.label}>
                     <Link
-                      to={item.to}
+                      to={item.to as string}
                       className={cn(
                         "group flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors",
                         active
                           ? "bg-sidebar-accent text-sidebar-foreground font-medium"
                           : "text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
                       )}
+                      activeOptions={{ exact: false }}
+                      // @ts-expect-error - some links point to placeholder routes
+                      from="/"
                     >
                       <item.icon className={cn("h-4 w-4", active && "text-brand")} />
                       <span className="flex-1 truncate">{item.label}</span>
