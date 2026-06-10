@@ -12,7 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as UsersRouteImport } from './routes/users'
 import { Route as TestsRouteImport } from './routes/tests'
 import { Route as ResultsRouteImport } from './routes/results'
+import { Route as RegisterRouteImport } from './routes/register'
 import { Route as QuestionsRouteImport } from './routes/questions'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as GradingRouteImport } from './routes/grading'
 import { Route as ExamRouteImport } from './routes/exam'
 import { Route as AuditRouteImport } from './routes/audit'
@@ -37,9 +39,19 @@ const ResultsRoute = ResultsRouteImport.update({
   path: '/results',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RegisterRoute = RegisterRouteImport.update({
+  id: '/register',
+  path: '/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const QuestionsRoute = QuestionsRouteImport.update({
   id: '/questions',
   path: '/questions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GradingRoute = GradingRouteImport.update({
@@ -89,7 +101,9 @@ export interface FileRoutesByFullPath {
   '/audit': typeof AuditRoute
   '/exam': typeof ExamRoute
   '/grading': typeof GradingRoute
+  '/login': typeof LoginRoute
   '/questions': typeof QuestionsRouteWithChildren
+  '/register': typeof RegisterRoute
   '/results': typeof ResultsRoute
   '/tests': typeof TestsRouteWithChildren
   '/users': typeof UsersRoute
@@ -103,7 +117,9 @@ export interface FileRoutesByTo {
   '/audit': typeof AuditRoute
   '/exam': typeof ExamRoute
   '/grading': typeof GradingRoute
+  '/login': typeof LoginRoute
   '/questions': typeof QuestionsRouteWithChildren
+  '/register': typeof RegisterRoute
   '/results': typeof ResultsRoute
   '/tests': typeof TestsRouteWithChildren
   '/users': typeof UsersRoute
@@ -118,7 +134,9 @@ export interface FileRoutesById {
   '/audit': typeof AuditRoute
   '/exam': typeof ExamRoute
   '/grading': typeof GradingRoute
+  '/login': typeof LoginRoute
   '/questions': typeof QuestionsRouteWithChildren
+  '/register': typeof RegisterRoute
   '/results': typeof ResultsRoute
   '/tests': typeof TestsRouteWithChildren
   '/users': typeof UsersRoute
@@ -134,7 +152,9 @@ export interface FileRouteTypes {
     | '/audit'
     | '/exam'
     | '/grading'
+    | '/login'
     | '/questions'
+    | '/register'
     | '/results'
     | '/tests'
     | '/users'
@@ -148,7 +168,9 @@ export interface FileRouteTypes {
     | '/audit'
     | '/exam'
     | '/grading'
+    | '/login'
     | '/questions'
+    | '/register'
     | '/results'
     | '/tests'
     | '/users'
@@ -162,7 +184,9 @@ export interface FileRouteTypes {
     | '/audit'
     | '/exam'
     | '/grading'
+    | '/login'
     | '/questions'
+    | '/register'
     | '/results'
     | '/tests'
     | '/users'
@@ -177,7 +201,9 @@ export interface RootRouteChildren {
   AuditRoute: typeof AuditRoute
   ExamRoute: typeof ExamRoute
   GradingRoute: typeof GradingRoute
+  LoginRoute: typeof LoginRoute
   QuestionsRoute: typeof QuestionsRouteWithChildren
+  RegisterRoute: typeof RegisterRoute
   ResultsRoute: typeof ResultsRoute
   TestsRoute: typeof TestsRouteWithChildren
   UsersRoute: typeof UsersRoute
@@ -206,11 +232,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResultsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/register': {
+      id: '/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/questions': {
       id: '/questions'
       path: '/questions'
       fullPath: '/questions'
       preLoaderRoute: typeof QuestionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/grading': {
@@ -302,7 +342,9 @@ const rootRouteChildren: RootRouteChildren = {
   AuditRoute: AuditRoute,
   ExamRoute: ExamRoute,
   GradingRoute: GradingRoute,
+  LoginRoute: LoginRoute,
   QuestionsRoute: QuestionsRouteWithChildren,
+  RegisterRoute: RegisterRoute,
   ResultsRoute: ResultsRoute,
   TestsRoute: TestsRouteWithChildren,
   UsersRoute: UsersRoute,
@@ -310,3 +352,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

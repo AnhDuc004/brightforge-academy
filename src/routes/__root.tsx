@@ -4,13 +4,16 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { Toaster } from "@/components/ui/sonner";
+import { getAccessToken } from "@/lib/auth";
 
 function NotFoundComponent() {
   return (
@@ -77,14 +80,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "ExamForge" },
+      { name: "description", content: "ExamForge enterprise assessment platform" },
+      { name: "author", content: "ExamForge" },
+      { property: "og:title", content: "ExamForge" },
+      { property: "og:description", content: "ExamForge enterprise assessment platform" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:site", content: "@ExamForge" },
     ],
     links: [
       {
@@ -118,8 +121,52 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
+      <AuthGate />
+      <Toaster richColors position="top-right" />
     </QueryClientProvider>
   );
+}
+
+function AuthGate() {
+  const router = useRouter();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const [authState, setAuthState] = useState<"loading" | "guest" | "authed">("loading");
+
+  useEffect(() => {
+    setAuthState(getAccessToken() ? "authed" : "guest");
+  }, []);
+
+  useEffect(() => {
+    const syncAuth = () => setAuthState(getAccessToken() ? "authed" : "guest");
+    window.addEventListener("auth-change", syncAuth);
+    return () => window.removeEventListener("auth-change", syncAuth);
+  }, []);
+
+  const isAuthRoute = pathname === "/login" || pathname === "/register";
+  const shouldRedirectToLogin = authState === "guest" && !isAuthRoute;
+  const shouldRedirectToDashboard = authState === "authed" && isAuthRoute;
+
+  useEffect(() => {
+    if (shouldRedirectToLogin) {
+      router.navigate({ to: "/login", replace: true });
+      return;
+    }
+
+    if (shouldRedirectToDashboard) {
+      router.navigate({ to: "/", replace: true });
+    }
+  }, [pathname, router, shouldRedirectToDashboard, shouldRedirectToLogin]);
+
+  if (authState === "loading" || shouldRedirectToLogin || shouldRedirectToDashboard) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(245,179,1,0.14),_transparent_30%),linear-gradient(180deg,_#0b0b0b_0%,_#111111_100%)] text-white">
+        <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 shadow-lg backdrop-blur">
+          <div className="h-2.5 w-2.5 animate-pulse rounded-full bg-brand" />
+          Loading ExamForge...
+        </div>
+      </div>
+    );
+  }
+
+  return <Outlet />;
 }
