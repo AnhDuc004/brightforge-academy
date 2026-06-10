@@ -9,19 +9,32 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as UsersRouteImport } from './routes/users'
 import { Route as TestsRouteImport } from './routes/tests'
+import { Route as ResultsRouteImport } from './routes/results'
 import { Route as QuestionsRouteImport } from './routes/questions'
 import { Route as GradingRouteImport } from './routes/grading'
 import { Route as ExamRouteImport } from './routes/exam'
+import { Route as AuditRouteImport } from './routes/audit'
 import { Route as AssignmentsRouteImport } from './routes/assignments'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TestsBuilderRouteImport } from './routes/tests.builder'
 import { Route as TestsIdRouteImport } from './routes/tests.$id'
 import { Route as QuestionsNewRouteImport } from './routes/questions.new'
 
+const UsersRoute = UsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TestsRoute = TestsRouteImport.update({
   id: '/tests',
   path: '/tests',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResultsRoute = ResultsRouteImport.update({
+  id: '/results',
+  path: '/results',
   getParentRoute: () => rootRouteImport,
 } as any)
 const QuestionsRoute = QuestionsRouteImport.update({
@@ -37,6 +50,11 @@ const GradingRoute = GradingRouteImport.update({
 const ExamRoute = ExamRouteImport.update({
   id: '/exam',
   path: '/exam',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuditRoute = AuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AssignmentsRoute = AssignmentsRouteImport.update({
@@ -68,10 +86,13 @@ const QuestionsNewRoute = QuestionsNewRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/assignments': typeof AssignmentsRoute
+  '/audit': typeof AuditRoute
   '/exam': typeof ExamRoute
   '/grading': typeof GradingRoute
   '/questions': typeof QuestionsRouteWithChildren
+  '/results': typeof ResultsRoute
   '/tests': typeof TestsRouteWithChildren
+  '/users': typeof UsersRoute
   '/questions/new': typeof QuestionsNewRoute
   '/tests/$id': typeof TestsIdRoute
   '/tests/builder': typeof TestsBuilderRoute
@@ -79,10 +100,13 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/assignments': typeof AssignmentsRoute
+  '/audit': typeof AuditRoute
   '/exam': typeof ExamRoute
   '/grading': typeof GradingRoute
   '/questions': typeof QuestionsRouteWithChildren
+  '/results': typeof ResultsRoute
   '/tests': typeof TestsRouteWithChildren
+  '/users': typeof UsersRoute
   '/questions/new': typeof QuestionsNewRoute
   '/tests/$id': typeof TestsIdRoute
   '/tests/builder': typeof TestsBuilderRoute
@@ -91,10 +115,13 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/assignments': typeof AssignmentsRoute
+  '/audit': typeof AuditRoute
   '/exam': typeof ExamRoute
   '/grading': typeof GradingRoute
   '/questions': typeof QuestionsRouteWithChildren
+  '/results': typeof ResultsRoute
   '/tests': typeof TestsRouteWithChildren
+  '/users': typeof UsersRoute
   '/questions/new': typeof QuestionsNewRoute
   '/tests/$id': typeof TestsIdRoute
   '/tests/builder': typeof TestsBuilderRoute
@@ -104,10 +131,13 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/assignments'
+    | '/audit'
     | '/exam'
     | '/grading'
     | '/questions'
+    | '/results'
     | '/tests'
+    | '/users'
     | '/questions/new'
     | '/tests/$id'
     | '/tests/builder'
@@ -115,10 +145,13 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/assignments'
+    | '/audit'
     | '/exam'
     | '/grading'
     | '/questions'
+    | '/results'
     | '/tests'
+    | '/users'
     | '/questions/new'
     | '/tests/$id'
     | '/tests/builder'
@@ -126,10 +159,13 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/assignments'
+    | '/audit'
     | '/exam'
     | '/grading'
     | '/questions'
+    | '/results'
     | '/tests'
+    | '/users'
     | '/questions/new'
     | '/tests/$id'
     | '/tests/builder'
@@ -138,19 +174,36 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AssignmentsRoute: typeof AssignmentsRoute
+  AuditRoute: typeof AuditRoute
   ExamRoute: typeof ExamRoute
   GradingRoute: typeof GradingRoute
   QuestionsRoute: typeof QuestionsRouteWithChildren
+  ResultsRoute: typeof ResultsRoute
   TestsRoute: typeof TestsRouteWithChildren
+  UsersRoute: typeof UsersRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/users': {
+      id: '/users'
+      path: '/users'
+      fullPath: '/users'
+      preLoaderRoute: typeof UsersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/tests': {
       id: '/tests'
       path: '/tests'
       fullPath: '/tests'
       preLoaderRoute: typeof TestsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/results': {
+      id: '/results'
+      path: '/results'
+      fullPath: '/results'
+      preLoaderRoute: typeof ResultsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/questions': {
@@ -172,6 +225,13 @@ declare module '@tanstack/react-router' {
       path: '/exam'
       fullPath: '/exam'
       preLoaderRoute: typeof ExamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/audit': {
+      id: '/audit'
+      path: '/audit'
+      fullPath: '/audit'
+      preLoaderRoute: typeof AuditRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/assignments': {
@@ -239,10 +299,13 @@ const TestsRouteWithChildren = TestsRoute._addFileChildren(TestsRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AssignmentsRoute: AssignmentsRoute,
+  AuditRoute: AuditRoute,
   ExamRoute: ExamRoute,
   GradingRoute: GradingRoute,
   QuestionsRoute: QuestionsRouteWithChildren,
+  ResultsRoute: ResultsRoute,
   TestsRoute: TestsRouteWithChildren,
+  UsersRoute: UsersRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
