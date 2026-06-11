@@ -1,4 +1,5 @@
 export const ACCESS_TOKEN_KEY = "access_token";
+export const TENANT_ID_KEY = "tenant_id";
 
 export type AuthProfile = {
   id: string;
@@ -21,15 +22,38 @@ export function getAccessToken() {
   return window.localStorage.getItem(ACCESS_TOKEN_KEY);
 }
 
+export function getTenantId() {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(TENANT_ID_KEY);
+}
+
 export function setAccessToken(token: string) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(ACCESS_TOKEN_KEY, token);
   window.dispatchEvent(new Event("auth-change"));
 }
 
+export function setTenantId(tenantId: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(TENANT_ID_KEY, tenantId);
+  window.dispatchEvent(new Event("auth-change"));
+}
+
+export function setAuthSession(token: string, tenantId?: string | null) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(ACCESS_TOKEN_KEY, token);
+
+  if (tenantId?.trim()) {
+    window.localStorage.setItem(TENANT_ID_KEY, tenantId.trim());
+  }
+
+  window.dispatchEvent(new Event("auth-change"));
+}
+
 export function clearAccessToken() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(ACCESS_TOKEN_KEY);
+  window.localStorage.removeItem(TENANT_ID_KEY);
   window.dispatchEvent(new Event("auth-change"));
 }
 
@@ -153,6 +177,44 @@ export function pickAccessToken(payload: unknown) {
     }
 
     for (const key of ["data", "result", "payload", "user", "meta"]) {
+      const nested = record[key];
+      if (nested && typeof nested === "object") {
+        stack.push(nested);
+      }
+    }
+  }
+
+  return null;
+}
+
+export function pickTenantId(payload: unknown) {
+  if (!payload || typeof payload !== "object") return null;
+
+  const visited = new Set<unknown>();
+  const stack: unknown[] = [payload];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || typeof current !== "object" || visited.has(current)) continue;
+    visited.add(current);
+
+    const record = current as Record<string, unknown>;
+    const directTenantId = record.tenant_id ?? record.tenantId;
+    if (typeof directTenantId === "string" && directTenantId.trim()) {
+      return directTenantId.trim();
+    }
+
+    const tenant = record.tenant;
+    if (tenant && typeof tenant === "object") {
+      const tenantRecord = tenant as Record<string, unknown>;
+      const nestedTenantId = tenantRecord.id ?? tenantRecord.tenant_id ?? tenantRecord.tenantId;
+      if (typeof nestedTenantId === "string" && nestedTenantId.trim()) {
+        return nestedTenantId.trim();
+      }
+      stack.push(tenant);
+    }
+
+    for (const key of ["data", "result", "payload", "user", "profile", "meta"]) {
       const nested = record[key];
       if (nested && typeof nested === "object") {
         stack.push(nested);

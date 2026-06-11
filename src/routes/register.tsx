@@ -8,7 +8,7 @@ import axios from "axios";
 import { toast } from "sonner";
 
 import api from "@/lib/axios";
-import { parseApiError, pickAccessToken, setAccessToken } from "@/lib/auth";
+import { parseApiError, pickAccessToken, pickTenantId, setAuthSession } from "@/lib/auth";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -69,7 +69,15 @@ function RegisterPage() {
 
       const token = pickAccessToken(response.data);
       if (token) {
-        setAccessToken(token);
+        const tenantId = pickTenantId(response.data);
+
+        if (!tenantId) {
+          console.warn(
+            "[tenant] Register response did not include tenant_id; X-Tenant-ID cannot be attached until tenant_id is available.",
+          );
+        }
+
+        setAuthSession(token, tenantId);
         toast.success("Account created and signed in.");
         router.navigate({ to: "/", replace: true });
         return;

@@ -1,4 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, Search, ChevronDown, Building2, HelpCircle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,14 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { currentUser, tenants } from "@/lib/mock-data";
 import api from "@/lib/axios";
-import { clearAccessToken, getAccessToken, getInitials, type AuthProfile } from "@/lib/auth";
+import {
+  clearAccessToken,
+  getAccessToken,
+  getInitials,
+  getTenantId,
+  setTenantId,
+  type AuthProfile,
+} from "@/lib/auth";
 
 export function AppHeader({ breadcrumbs = [] as { label: string; to?: string }[] }) {
   const navigate = useNavigate();
@@ -44,6 +52,13 @@ export function AppHeader({ breadcrumbs = [] as { label: string; to?: string }[]
   });
 
   const profile = meQuery.data;
+
+  useEffect(() => {
+    if (profile?.tenant_id && !getTenantId()) {
+      setTenantId(profile.tenant_id);
+    }
+  }, [profile?.tenant_id]);
+
   const profileName = profile?.display_name ?? (meQuery.isLoading ? "Loading user..." : "Unknown user");
   const profileEmail = profile?.email ?? (meQuery.isLoading ? "Fetching profile..." : "No email available");
   const profileInitials = getInitials(profile?.display_name, profile?.email);
