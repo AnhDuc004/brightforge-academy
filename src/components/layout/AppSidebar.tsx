@@ -19,8 +19,8 @@ const groups: Group[] = [
   ]},
   { title: "Test Builder", items: [
     { label: "Tests", to: "/tests", icon: FileStack },
-    { label: "Sections", to: "/sections", icon: Layers },
-    { label: "Published Tests", to: "/tests/published", icon: Send },
+    { label: "Sections", to: "/tests/builder", icon: Layers },
+    { label: "Published Tests", to: "/tests", icon: Send },
   ]},
   { title: "Assignments", items: [
     { label: "Active Assignments", to: "/assignments", icon: ClipboardList },

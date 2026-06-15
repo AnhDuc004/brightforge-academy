@@ -1,20 +1,31 @@
 import api from "@/lib/axios";
 
 export type AssignmentStatus = "assigned" | "started" | "completed" | "expired" | "archived";
+export type AssignmentAccessType = "account" | "token";
 
 export type Assignment = {
   id: string;
   tenant_id?: string | null;
-  user_id: string;
+  assigned_by?: string | null;
   test_id: string;
-  due_date: string | null;
+  assignee_id: string;
+  user_id?: string;
+  due_at: string | null;
+  due_date?: string | null;
+  access_type: AssignmentAccessType;
   access_token?: string | null;
   max_attempts: number;
-  current_attempts: number;
+  current_attempts?: number;
   status: AssignmentStatus;
   created_at?: string | null;
   updated_at?: string | null;
-  user?: {
+  assignee?: {
+    id?: string;
+    email?: string;
+    name?: string;
+    display_name?: string;
+  } | null;
+  assigned_by_user?: {
     id?: string;
     email?: string;
     name?: string;
@@ -29,9 +40,10 @@ export type Assignment = {
 
 export type AssignmentPayload = {
   test_id: string;
-  user_id: string;
-  due_date: string;
+  assignee_id: string;
+  due_at?: string | null;
   max_attempts: number;
+  access_type: AssignmentAccessType;
 };
 
 export type AssignmentUpdatePayload = Partial<AssignmentPayload> & {
@@ -41,6 +53,8 @@ export type AssignmentUpdatePayload = Partial<AssignmentPayload> & {
 export type AssignmentListParams = {
   page?: number;
   per_page?: number;
+  assignee_id?: string;
+  assigned_by_id?: string;
   user_id?: string;
 };
 
@@ -66,6 +80,59 @@ function unwrapData(payload: unknown) {
   return record.data ?? payload;
 }
 
+function normalizeAssignmentResource(value: unknown): Assignment {
+  const record = asRecord(value);
+  return {
+    id: String(record.id ?? ""),
+    tenant_id: typeof record.tenant_id === "string" ? record.tenant_id : null,
+    assigned_by: typeof record.assigned_by === "string" ? record.assigned_by : null,
+    test_id: String(record.test_id ?? ""),
+    assignee_id: String(record.assignee_id ?? record.user_id ?? ""),
+    user_id: typeof record.user_id === "string" ? record.user_id : undefined,
+    due_at: typeof record.due_at === "string" ? record.due_at : typeof record.due_date === "string" ? record.due_date : null,
+    due_date: typeof record.due_date === "string" ? record.due_date : typeof record.due_at === "string" ? record.due_at : null,
+    access_type: record.access_type === "account" ? "account" : "token",
+    access_token: typeof record.access_token === "string" ? record.access_token : null,
+    max_attempts: Number(record.max_attempts ?? 1),
+    current_attempts: typeof record.current_attempts === "number" ? record.current_attempts : undefined,
+    status: (record.status as AssignmentStatus) ?? "assigned",
+    created_at: typeof record.created_at === "string" ? record.created_at : null,
+    updated_at: typeof record.updated_at === "string" ? record.updated_at : null,
+    assignee:
+      record.assignee && typeof record.assignee === "object"
+        ? {
+            id: typeof asRecord(record.assignee).id === "string" ? String(asRecord(record.assignee).id) : undefined,
+            email: typeof asRecord(record.assignee).email === "string" ? String(asRecord(record.assignee).email) : undefined,
+            name: typeof asRecord(record.assignee).name === "string" ? String(asRecord(record.assignee).name) : undefined,
+            display_name:
+              typeof asRecord(record.assignee).display_name === "string"
+                ? String(asRecord(record.assignee).display_name)
+                : undefined,
+          }
+        : null,
+    assigned_by_user:
+      record.assigned_by_user && typeof record.assigned_by_user === "object"
+        ? {
+            id: typeof asRecord(record.assigned_by_user).id === "string" ? String(asRecord(record.assigned_by_user).id) : undefined,
+            email: typeof asRecord(record.assigned_by_user).email === "string" ? String(asRecord(record.assigned_by_user).email) : undefined,
+            name: typeof asRecord(record.assigned_by_user).name === "string" ? String(asRecord(record.assigned_by_user).name) : undefined,
+            display_name:
+              typeof asRecord(record.assigned_by_user).display_name === "string"
+                ? String(asRecord(record.assigned_by_user).display_name)
+                : undefined,
+          }
+        : null,
+    test:
+      record.test && typeof record.test === "object"
+        ? {
+            id: typeof asRecord(record.test).id === "string" ? String(asRecord(record.test).id) : undefined,
+            title: typeof asRecord(record.test).title === "string" ? String(asRecord(record.test).title) : undefined,
+            name: typeof asRecord(record.test).name === "string" ? String(asRecord(record.test).name) : undefined,
+          }
+        : null,
+  };
+}
+
 function normalizeList(payload: unknown, fallback: Required<Pick<AssignmentListParams, "page" | "per_page">>): AssignmentListResult {
   const data = unwrapData(payload);
   const record = asRecord(data);
@@ -84,7 +151,7 @@ function normalizeList(payload: unknown, fallback: Required<Pick<AssignmentListP
   const lastPage = Number(meta.last_page ?? meta.lastPage ?? record.last_page ?? Math.max(1, Math.ceil(total / perPage)));
 
   return {
-    assignments: items as Assignment[],
+    assignments: items.map(normalizeAssignmentResource),
     total,
     page,
     perPage,
@@ -95,7 +162,7 @@ function normalizeList(payload: unknown, fallback: Required<Pick<AssignmentListP
 function normalizeAssignment(payload: unknown) {
   const data = unwrapData(payload);
   const record = asRecord(data);
-  return (record.assignment ?? data) as Assignment;
+  return normalizeAssignmentResource(record.assignment ?? data);
 }
 
 function normalizeCreate(payload: unknown): AssignmentCreateResult {
@@ -103,7 +170,7 @@ function normalizeCreate(payload: unknown): AssignmentCreateResult {
   const record = asRecord(data);
 
   return {
-    assignment: (record.assignment ?? data) as Assignment,
+    assignment: normalizeAssignmentResource(record.assignment ?? data),
     access_token: typeof record.access_token === "string" ? record.access_token : null,
   };
 }
@@ -116,7 +183,8 @@ export async function listAssignments(params: AssignmentListParams = {}) {
     params: {
       page,
       per_page,
-      user_id: params.user_id || undefined,
+      assignee_id: params.assignee_id || params.user_id || undefined,
+      assigned_by_id: params.assigned_by_id || undefined,
     },
   });
 

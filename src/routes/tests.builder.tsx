@@ -1,123 +1,1170 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { z } from "zod";
+import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  GripVertical, Plus, Search, ChevronDown, Trash2, Save, Send,
-  FileText, Lock, Camera,
+  GripVertical,
+  Plus,
+  Search,
+  Trash2,
+  Save,
+  Send,
+  FileText,
+  Lock,
+  Loader2,
+  Pencil,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
-import { questions } from "@/lib/mock-data";
+
+import { listAllQuestions, type Question } from "@/lib/questions";
+import {
+  addSection,
+  attachQuestionToSection,
+  createTest,
+  deleteSection,
+  getTest,
+  publishTest,
+  removeQuestionFromSection,
+  updateSection,
+  updateSectionQuestion,
+  updateTest,
+  type TestResource,
+} from "@/lib/tests";
+import { parseApiError } from "@/lib/auth";
 
 export const Route = createFileRoute("/tests/builder")({
+  validateSearch: z.object({
+    testId: z.string().optional(),
+  }),
   head: () => ({ meta: [{ title: "Test builder · ExamForge" }] }),
   component: TestBuilder,
 });
 
+type TestFormState = {
+  title: string;
+  description: string;
+  duration_seconds: string;
+  passing_score: string;
+};
+
+type SectionFormState = {
+  title: string;
+  instructions: string;
+  position: string;
+};
+
+type QuestionFormState = {
+  position: string;
+  score_override: string;
+};
+
+type AttachFormState = {
+  question_id: string;
+  position: string;
+  score_override: string;
+};
+
+type FieldErrors = Partial<Record<"title" | "description" | "duration_seconds" | "passing_score", string>>;
+type SectionFieldErrors = Record<string, Partial<Record<"title" | "instructions" | "position", string>>>;
+type QuestionFieldErrors = Record<string, Partial<Record<"position" | "score_override", string>>>;
+type AttachFieldErrors = Record<string, Partial<Record<"question_id" | "position" | "score_override", string>>>;
+
+const emptyTestForm: TestFormState = {
+  title: "",
+  description: "",
+  duration_seconds: "3600",
+  passing_score: "70",
+};
+
+function toTestForm(test?: TestResource | null): TestFormState {
+  if (!test) return emptyTestForm;
+
+  return {
+    title: test.title,
+    description: test.description ?? "",
+    duration_seconds: String(test.duration_seconds || 3600),
+    passing_score: String(test.passing_score || 70),
+  };
+}
+
+function toSectionForm(section: TestResource["sections"][number]): SectionFormState {
+  return {
+    title: section.title,
+    instructions: section.instructions ?? "",
+    position: String(section.position),
+  };
+}
+
+function toQuestionForm(question: TestResource["sections"][number]["questions"][number]): QuestionFormState {
+  return {
+    position: String(question.position),
+    score_override: question.score_override == null ? "" : String(question.score_override),
+  };
+}
+
+function toNum(value: string) {
+  return value.trim() === "" ? Number.NaN : Number(value);
+}
+
+function firstErrorMessage(error: z.ZodError) {
+  const fieldErrors: Record<string, string> = {};
+  for (const issue of error.issues) {
+    const key = issue.path[0];
+    if (typeof key === "string" && !fieldErrors[key]) {
+      fieldErrors[key] = issue.message;
+    }
+  }
+  return fieldErrors;
+}
+
+const testSchema = z.object({
+  title: z.string().trim().min(1, "Title is required."),
+  description: z.string().trim().optional().nullable(),
+  duration_seconds: z.coerce.number().int("Duration must be an integer.").min(1, "Duration must be at least 1 second."),
+  passing_score: z.coerce.number().int("Passing score must be an integer.").min(0, "Passing score must be 0 or greater."),
+});
+
+const sectionSchema = z.object({
+  title: z.string().trim().min(1, "Section title is required."),
+  instructions: z.string().trim().optional().nullable(),
+  position: z.coerce.number().int("Position must be an integer.").min(1, "Position must be at least 1."),
+});
+
+const questionSchema = z.object({
+  position: z.coerce.number().int("Position must be an integer.").min(1, "Position must be at least 1."),
+  score_override: z.coerce.number().int("Score must be an integer.").min(0, "Score must be 0 or greater.").nullable(),
+});
+
+const attachSchema = z.object({
+  question_id: z.string().trim().min(1, "Please choose a question."),
+  position: z.coerce.number().int("Position must be an integer.").min(1, "Position must be at least 1."),
+  score_override: z.coerce.number().int("Score must be an integer.").min(0, "Score must be 0 or greater.").nullable(),
+});
+
 function TestBuilder() {
-  const sections = [
-    { id: 1, title: "Section A — Cell Biology", questions: questions.slice(0, 3).map((q) => ({ ...q, score: 5 })) },
-    { id: 2, title: "Section B — Mathematics", questions: questions.slice(4, 6).map((q) => ({ ...q, score: 10 })) },
-  ];
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const { testId } = Route.useSearch();
+  const [bankSearch, setBankSearch] = useState("");
+  const [testForm, setTestForm] = useState<TestFormState>(emptyTestForm);
+  const [sectionForms, setSectionForms] = useState<Record<string, SectionFormState>>({});
+  const [questionForms, setQuestionForms] = useState<Record<string, QuestionFormState>>({});
+  const [attachForms, setAttachForms] = useState<Record<string, AttachFormState>>({});
+  const [testErrors, setTestErrors] = useState<FieldErrors>({});
+  const [sectionErrors, setSectionErrors] = useState<SectionFieldErrors>({});
+  const [questionErrors, setQuestionErrors] = useState<QuestionFieldErrors>({});
+  const [attachErrors, setAttachErrors] = useState<AttachFieldErrors>({});
+  const [newSectionForm, setNewSectionForm] = useState<SectionFormState>({
+    title: "",
+    instructions: "",
+    position: "1",
+  });
+  const [newSectionErrors, setNewSectionErrors] = useState<Partial<Record<"title" | "instructions" | "position", string>>>({});
+
+  const testQuery = useQuery({
+    queryKey: ["tests", "detail", testId],
+    queryFn: () => getTest(testId ?? ""),
+    enabled: Boolean(testId),
+    staleTime: 30_000,
+  });
+
+  const publishedQuestionsQuery = useQuery({
+    queryKey: ["questions", "published", "bank"],
+    queryFn: () => listAllQuestions({ status: "published", per_page: 100 }),
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    const test = testQuery.data;
+    setTestForm(toTestForm(test));
+    setTestErrors({});
+    setSectionForms(
+      Object.fromEntries((test?.sections ?? []).map((section) => [section.id, toSectionForm(section)])),
+    );
+    setSectionErrors({});
+    setQuestionForms(
+      Object.fromEntries(
+        (test?.sections ?? []).flatMap((section) =>
+          section.questions.map((question) => [question.id, toQuestionForm(question)]),
+        ),
+      ),
+    );
+    setQuestionErrors({});
+    setAttachForms(
+      Object.fromEntries(
+        (test?.sections ?? []).map((section) => [
+          section.id,
+          {
+            question_id: "",
+            position: String(section.questions.length + 1),
+            score_override: "",
+          },
+        ]),
+      ),
+    );
+    setAttachErrors({});
+    setNewSectionForm({
+      title: "",
+      instructions: "",
+      position: String((test?.sections?.length ?? 0) + 1),
+    });
+    setNewSectionErrors({});
+  }, [testQuery.data]);
+
+  const bankQuestions = publishedQuestionsQuery.data ?? [];
+  const filteredBankQuestions = useMemo(() => {
+    const query = bankSearch.trim().toLowerCase();
+    if (!query) return bankQuestions;
+
+    return bankQuestions.filter((question) =>
+      [
+        question.content,
+        question.type,
+        question.difficulty,
+        question.tags.join(" "),
+        question.status,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [bankQuestions, bankSearch]);
+
+  const refresh = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["tests"] });
+    if (testId) {
+      await queryClient.invalidateQueries({ queryKey: ["tests", "detail", testId] });
+    }
+  };
+
+  function validateTestForm() {
+    const parsed = testSchema.safeParse({
+      title: testForm.title,
+      description: testForm.description || null,
+      duration_seconds: testForm.duration_seconds,
+      passing_score: testForm.passing_score,
+    });
+
+    if (parsed.success) {
+      setTestErrors({});
+      return parsed.data;
+    }
+
+    setTestErrors(firstErrorMessage(parsed.error) as FieldErrors);
+    return null;
+  }
+
+  function validateSectionForm(sectionId: string, payload: SectionFormState) {
+    const parsed = sectionSchema.safeParse({
+      title: payload.title,
+      instructions: payload.instructions || null,
+      position: payload.position,
+    });
+
+    if (parsed.success) {
+      setSectionErrors((current) => {
+        const next = { ...current };
+        delete next[sectionId];
+        return next;
+      });
+      return parsed.data;
+    }
+
+    setSectionErrors((current) => ({
+      ...current,
+      [sectionId]: firstErrorMessage(parsed.error) as SectionFieldErrors[string],
+    }));
+    return null;
+  }
+
+  function validateQuestionForm(questionId: string, payload: QuestionFormState) {
+    const parsed = questionSchema.safeParse({
+      position: payload.position,
+      score_override: payload.score_override === "" ? null : payload.score_override,
+    });
+
+    if (parsed.success) {
+      setQuestionErrors((current) => {
+        const next = { ...current };
+        delete next[questionId];
+        return next;
+      });
+      return parsed.data;
+    }
+
+    setQuestionErrors((current) => ({
+      ...current,
+      [questionId]: firstErrorMessage(parsed.error) as QuestionFieldErrors[string],
+    }));
+    return null;
+  }
+
+  function validateAttachForm(sectionId: string, payload: AttachFormState) {
+    const parsed = attachSchema.safeParse({
+      question_id: payload.question_id,
+      position: payload.position,
+      score_override: payload.score_override === "" ? null : payload.score_override,
+    });
+
+    if (parsed.success) {
+      setAttachErrors((current) => {
+        const next = { ...current };
+        delete next[sectionId];
+        return next;
+      });
+      return parsed.data;
+    }
+
+    setAttachErrors((current) => ({
+      ...current,
+      [sectionId]: firstErrorMessage(parsed.error) as AttachFieldErrors[string],
+    }));
+    return null;
+  }
+
+  const saveTestMutation = useMutation({
+    mutationFn: async () => {
+      const payload = validateTestForm();
+      if (!payload) {
+        throw new Error("Please fix the highlighted fields.");
+      }
+
+      if (testId) {
+        return updateTest(testId, payload);
+      }
+
+      return createTest(payload);
+    },
+    onSuccess: async (saved) => {
+      toast.success(testId ? "Test updated successfully." : "Test created successfully.");
+      await refresh();
+      if (!testId && saved?.id) {
+        await router.navigate({
+          to: "/tests/builder",
+          search: { testId: saved.id },
+        });
+      }
+    },
+    onError: (error) => {
+      toast.error(parseApiError(error).message);
+    },
+  });
+
+  const publishMutation = useMutation({
+    mutationFn: () => publishTest(testId ?? ""),
+    onSuccess: async () => {
+      toast.success("Test published successfully.");
+      await refresh();
+    },
+    onError: (error) => {
+      toast.error(parseApiError(error).message);
+    },
+  });
+
+  const addSectionMutation = useMutation({
+    mutationFn: async () => {
+      if (!testId) throw new Error("Please save the test first.");
+      const parsed = sectionSchema.safeParse({
+        title: newSectionForm.title,
+        instructions: newSectionForm.instructions || null,
+        position: newSectionForm.position,
+      });
+      if (!parsed.success) {
+        setNewSectionErrors(firstErrorMessage(parsed.error) as Partial<Record<"title" | "instructions" | "position", string>>);
+        throw new Error("Please fix the highlighted fields.");
+      }
+      setNewSectionErrors({});
+      return addSection(testId, {
+        title: parsed.data.title,
+        instructions: parsed.data.instructions,
+        position: parsed.data.position,
+      });
+    },
+    onSuccess: async () => {
+      toast.success("Section added successfully.");
+      setNewSectionForm((current) => ({
+        ...current,
+        title: "",
+        instructions: "",
+        position: String((testQuery.data?.sections?.length ?? 0) + 1),
+      }));
+      await refresh();
+    },
+    onError: (error) => {
+      toast.error(parseApiError(error).message);
+    },
+  });
+
+  const updateSectionMutation = useMutation({
+    mutationFn: async ({ sectionId, payload }: { sectionId: string; payload: SectionFormState }) => {
+      if (!testId) throw new Error("Missing test ID.");
+      const parsed = validateSectionForm(sectionId, payload);
+      if (!parsed) {
+        throw new Error("Please fix the highlighted fields.");
+      }
+      return updateSection(testId, sectionId, {
+        title: parsed.title,
+        instructions: parsed.instructions,
+        position: parsed.position,
+      });
+    },
+    onSuccess: async () => {
+      toast.success("Section updated successfully.");
+      await refresh();
+    },
+    onError: (error) => {
+      toast.error(parseApiError(error).message);
+    },
+  });
+
+  const deleteSectionMutation = useMutation({
+    mutationFn: async (sectionId: string) => {
+      if (!testId) throw new Error("Missing test ID.");
+      return deleteSection(testId, sectionId);
+    },
+    onSuccess: async () => {
+      toast.success("Section deleted successfully.");
+      await refresh();
+    },
+    onError: (error) => {
+      toast.error(parseApiError(error).message);
+    },
+  });
+
+  const attachQuestionMutation = useMutation({
+    mutationFn: async ({ sectionId, payload }: { sectionId: string; payload: AttachFormState }) => {
+      if (!testId) throw new Error("Missing test ID.");
+      const parsed = validateAttachForm(sectionId, payload);
+      if (!parsed) {
+        throw new Error("Please fix the highlighted fields.");
+      }
+      return attachQuestionToSection(testId, sectionId, {
+        question_id: parsed.question_id,
+        position: parsed.position,
+        score_override: parsed.score_override,
+      });
+    },
+    onSuccess: async () => {
+      toast.success("Question attached successfully.");
+      await refresh();
+    },
+    onError: (error) => {
+      toast.error(parseApiError(error).message);
+    },
+  });
+
+  const updateQuestionMutation = useMutation({
+    mutationFn: async ({
+      sectionId,
+      sectionQuestionId,
+      payload,
+    }: {
+      sectionId: string;
+      sectionQuestionId: string;
+      payload: QuestionFormState;
+    }) => {
+      if (!testId) throw new Error("Missing test ID.");
+      const parsed = validateQuestionForm(sectionQuestionId, payload);
+      if (!parsed) {
+        throw new Error("Please fix the highlighted fields.");
+      }
+      return updateSectionQuestion(testId, sectionId, sectionQuestionId, {
+        position: parsed.position,
+        score_override: parsed.score_override,
+      });
+    },
+    onSuccess: async () => {
+      toast.success("Question updated successfully.");
+      await refresh();
+    },
+    onError: (error) => {
+      toast.error(parseApiError(error).message);
+    },
+  });
+
+  const deleteQuestionMutation = useMutation({
+    mutationFn: async ({ sectionId, sectionQuestionId }: { sectionId: string; sectionQuestionId: string }) => {
+      if (!testId) throw new Error("Missing test ID.");
+      return removeQuestionFromSection(testId, sectionId, sectionQuestionId);
+    },
+    onSuccess: async () => {
+      toast.success("Question removed successfully.");
+      await refresh();
+    },
+    onError: (error) => {
+      toast.error(parseApiError(error).message);
+    },
+  });
+
+  async function moveSection(sectionId: string, direction: "up" | "down") {
+    if (!testId || isReadOnly) return;
+
+    const ordered = [...sections];
+    const index = ordered.findIndex((section) => section.id === sectionId);
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (index < 0 || targetIndex < 0 || targetIndex >= ordered.length) return;
+
+    const current = ordered[index];
+    const target = ordered[targetIndex];
+
+    try {
+      await Promise.all([
+        updateSection(testId, current.id, { position: target.position }),
+        updateSection(testId, target.id, { position: current.position }),
+      ]);
+      await refresh();
+    } catch (error) {
+      toast.error(parseApiError(error).message);
+    }
+  }
+
+  async function moveQuestion(sectionId: string, questionId: string, direction: "up" | "down") {
+    if (!testId || isReadOnly) return;
+
+    const section = sections.find((item) => item.id === sectionId);
+    if (!section) return;
+
+    const ordered = [...section.questions].sort((left, right) => left.position - right.position);
+    const index = ordered.findIndex((question) => question.id === questionId);
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (index < 0 || targetIndex < 0 || targetIndex >= ordered.length) return;
+
+    const current = ordered[index];
+    const target = ordered[targetIndex];
+
+    try {
+      await Promise.all([
+        updateSectionQuestion(testId, sectionId, current.id, { position: target.position }),
+        updateSectionQuestion(testId, sectionId, target.id, { position: current.position }),
+      ]);
+      await refresh();
+    } catch (error) {
+      toast.error(parseApiError(error).message);
+    }
+  }
+
+  const test = testQuery.data;
+  const isReadOnly = test?.status === "published";
+  const sections = useMemo(
+    () => [...(test?.sections ?? [])].sort((left, right) => left.position - right.position),
+    [test?.sections],
+  );
+
+  const publishedQuestions = publishedQuestionsQuery.isLoading ? [] : filteredBankQuestions;
+  const totalQuestions = sections.reduce((sum, section) => sum + section.questions.length, 0);
 
   return (
     <AppLayout
       breadcrumbs={[{ label: "Tests", to: "/tests" }, { label: "Builder" }]}
-      title="Biology Midterm – Fall 2026"
-      description="Drag questions from the bank into sections. Configure scores, then publish a snapshot."
+      title={test?.title ?? "New test"}
+      description={
+        test
+          ? isReadOnly
+            ? "Published test. Read-only after publish."
+            : "Draft test. Edit metadata, sections, and question mapping here."
+          : "Create a new draft test, then add sections and questions from the published question bank."
+      }
       actions={
         <>
-          <Button variant="outline" size="sm"><Save className="h-4 w-4 mr-1.5"/> Save draft</Button>
-          <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90"><Send className="h-4 w-4 mr-1.5"/> Publish</Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void saveTestMutation.mutateAsync()}
+            disabled={saveTestMutation.isPending}
+          >
+            {saveTestMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            <span className="ml-1.5">{testId ? "Save draft" : "Create draft"}</span>
+          </Button>
+          {testId && !isReadOnly && (
+            <Button
+              size="sm"
+              className="bg-brand text-brand-foreground hover:bg-brand/90"
+              onClick={() => void publishMutation.mutateAsync()}
+              disabled={publishMutation.isPending}
+            >
+              {publishMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              <span className="ml-1.5">Publish</span>
+            </Button>
+          )}
         </>
       }
     >
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-        {/* Left: Question bank */}
         <Card className="lg:col-span-2 flex flex-col h-[calc(100vh-220px)] overflow-hidden">
           <div className="p-4 border-b">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold flex items-center gap-2"><FileText className="h-4 w-4 text-brand"/> Question bank</h3>
-              <Badge variant="secondary" className="font-mono text-[11px]">1,284</Badge>
+              <h3 className="font-semibold flex items-center gap-2">
+                <FileText className="h-4 w-4 text-brand" /> Question bank
+              </h3>
+              <Badge variant="secondary" className="font-mono text-[11px]">
+                {bankQuestions.length}
+              </Badge>
             </div>
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"/>
-              <Input placeholder="Search bank…" className="pl-8 h-9"/>
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={bankSearch}
+                onChange={(event) => setBankSearch(event.target.value)}
+                placeholder="Search published questions..."
+                className="pl-8 h-9"
+              />
             </div>
-            <div className="flex flex-wrap gap-1.5 mt-3">
-              {["All", "Biology", "Math", "CS", "History"].map((t, i) => (
-                <Badge key={t} variant={i === 0 ? "default" : "outline"} className={i === 0 ? "bg-ink text-brand" : "cursor-pointer hover:bg-muted"}>{t}</Badge>
-              ))}
-            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Only published questions can be attached to a test.
+            </p>
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-            {questions.map((q) => (
-              <div key={q.id} className="group flex items-start gap-2 p-2.5 rounded-md border bg-background hover:border-brand/40 hover:bg-brand/5 cursor-grab transition">
-                <GripVertical className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0"/>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium line-clamp-2">{q.text}</div>
-                  <div className="flex items-center gap-2 mt-1.5">
-                    <Badge variant="secondary" className="text-[10px] font-normal">{q.type}</Badge>
-                    <span className="text-[11px] text-muted-foreground">{q.difficulty}</span>
-                    <span className="text-[11px] text-muted-foreground font-mono ml-auto">{q.id}</span>
+            {publishedQuestionsQuery.isLoading ? (
+              <div className="p-4 text-sm text-muted-foreground">Loading question bank...</div>
+            ) : publishedQuestions.length === 0 ? (
+              <div className="p-4 text-sm text-muted-foreground">No published questions matched your search.</div>
+            ) : (
+              publishedQuestions.map((question: Question) => (
+                <div
+                  key={question.id}
+                  className="group flex items-start gap-2 p-2.5 rounded-md border bg-background hover:border-brand/40 hover:bg-brand/5 transition"
+                >
+                  <GripVertical className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium line-clamp-2">{question.content}</div>
+                    <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                      <Badge variant="secondary" className="text-[10px] font-normal">
+                        {question.type}
+                      </Badge>
+                      <span className="text-[11px] text-muted-foreground">{question.difficulty}</span>
+                      <span className="text-[11px] text-muted-foreground font-mono ml-auto">{question.id}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </Card>
 
-        {/* Right: Test structure */}
         <div className="lg:col-span-3 flex flex-col gap-4">
           <Card className="p-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-              <Stat label="Total questions" value="5"/>
-              <Stat label="Total score" value="35"/>
-              <Stat label="Duration" value="90 min"/>
-              <Stat label="Passing" value="60%"/>
-            </div>
-            <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-md bg-brand/10 border border-brand/30 text-xs">
-              <Camera className="h-3.5 w-3.5 text-foreground"/>
-              <span><strong>Snapshot mode.</strong> Publishing freezes a copy of each question. Future edits in the bank won't change this test.</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">Title</label>
+                <Input
+                  value={testForm.title}
+                  onChange={(event) => {
+                    setTestForm((current) => ({ ...current, title: event.target.value }));
+                    setTestErrors((current) => ({ ...current, title: undefined }));
+                  }}
+                  placeholder="Midterm English"
+                  className={testErrors.title ? "border-destructive focus-visible:ring-destructive" : ""}
+                />
+                {testErrors.title && <p className="text-xs text-destructive">{testErrors.title}</p>}
+              </div>
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">Passing score</label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={testForm.passing_score}
+                  onChange={(event) => {
+                    setTestForm((current) => ({ ...current, passing_score: event.target.value }));
+                    setTestErrors((current) => ({ ...current, passing_score: undefined }));
+                  }}
+                  className={testErrors.passing_score ? "border-destructive focus-visible:ring-destructive" : ""}
+                />
+                {testErrors.passing_score && <p className="text-xs text-destructive">{testErrors.passing_score}</p>}
+              </div>
+              <div className="grid gap-2 md:col-span-2">
+                <label className="text-sm font-medium">Description</label>
+                <Textarea
+                  value={testForm.description}
+                  onChange={(event) => {
+                    setTestForm((current) => ({ ...current, description: event.target.value }));
+                    setTestErrors((current) => ({ ...current, description: undefined }));
+                  }}
+                  placeholder="Midterm test"
+                  className={`min-h-24 ${testErrors.description ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                />
+                {testErrors.description && <p className="text-xs text-destructive">{testErrors.description}</p>}
+              </div>
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">Duration in seconds</label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={testForm.duration_seconds}
+                  onChange={(event) => {
+                    setTestForm((current) => ({ ...current, duration_seconds: event.target.value }));
+                    setTestErrors((current) => ({ ...current, duration_seconds: undefined }));
+                  }}
+                  className={testErrors.duration_seconds ? "border-destructive focus-visible:ring-destructive" : ""}
+                />
+                {testErrors.duration_seconds && <p className="text-xs text-destructive">{testErrors.duration_seconds}</p>}
+              </div>
+              <div className="flex items-end justify-between gap-3">
+                <div className="text-xs text-muted-foreground">
+                  Publishing freezes the snapshot of every section question.
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void saveTestMutation.mutateAsync()}
+                  disabled={saveTestMutation.isPending}
+                >
+                  {saveTestMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Pencil className="h-4 w-4" />
+                  )}
+                  <span className="ml-1.5">{testId ? "Save metadata" : "Create test"}</span>
+                </Button>
+              </div>
             </div>
           </Card>
 
-          <div className="flex-1 space-y-3 overflow-y-auto">
-            {sections.map((s) => (
-              <Card key={s.id} className="overflow-hidden">
-                <div className="flex items-center gap-2 px-4 py-3 border-b bg-muted/30">
-                  <ChevronDown className="h-4 w-4 text-muted-foreground"/>
-                  <GripVertical className="h-4 w-4 text-muted-foreground"/>
-                  <Input defaultValue={s.title} className="border-0 shadow-none focus-visible:ring-0 font-medium px-1 h-7 bg-transparent flex-1"/>
-                  <Badge variant="secondary" className="font-mono text-[10px]">{s.questions.length} questions</Badge>
-                  <Button variant="ghost" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5 text-destructive"/></Button>
+          <Card className="p-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+              <Stat label="Total sections" value={String(test?.sections.length ?? 0)} />
+              <Stat label="Total questions" value={String(totalQuestions)} />
+              <Stat label="Duration" value={`${Math.max(1, Math.round(Number(testForm.duration_seconds || 0) / 60))} min`} />
+              <Stat label="Passing" value={`${testForm.passing_score || 0}%`} />
+            </div>
+            <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-md bg-brand/10 border border-brand/30 text-xs">
+              <Lock className="h-3.5 w-3.5 text-foreground" />
+              <span>
+                <strong>Snapshot mode.</strong> Questions are copied from the published bank and later edits in the bank
+                won't change this test.
+              </span>
+            </div>
+          </Card>
+
+          <div className="space-y-4">
+            {sections.map((section) => {
+              const sectionDraft = sectionForms[section.id] ?? toSectionForm(section);
+              const attachDraft = attachForms[section.id] ?? {
+                question_id: "",
+                position: String(section.questions.length + 1),
+                score_override: "",
+              };
+              const sectionError = sectionErrors[section.id] ?? {};
+              const sortedQuestions = [...section.questions].sort((left, right) => left.position - right.position);
+              const attachError = attachErrors[section.id] ?? {};
+
+              return (
+                <Card key={section.id} className="overflow-hidden">
+                  <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b bg-muted/30">
+                    <GripVertical className="h-4 w-4 text-muted-foreground" />
+                    <Input
+                      value={sectionDraft.title}
+                      onChange={(event) => {
+                        setSectionForms((current) => ({
+                          ...current,
+                          [section.id]: { ...sectionDraft, title: event.target.value },
+                        }));
+                        setSectionErrors((current) => ({
+                          ...current,
+                          [section.id]: { ...current[section.id], title: undefined },
+                        }));
+                      }}
+                      className="border-0 shadow-none focus-visible:ring-0 font-medium px-1 h-7 bg-transparent flex-1 min-w-[180px]"
+                      disabled={isReadOnly}
+                    />
+                    <Badge variant="secondary" className="font-mono text-[10px]">
+                      {sortedQuestions.length} questions
+                    </Badge>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      disabled={isReadOnly}
+                      onClick={() => void moveSection(section.id, "up")}
+                    >
+                      <ChevronUp className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      disabled={isReadOnly}
+                      onClick={() => void moveSection(section.id, "down")}
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      disabled={isReadOnly || deleteSectionMutation.isPending}
+                      onClick={() => void deleteSectionMutation.mutateAsync(section.id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  </div>
+
+                  <div className="p-4 border-b grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="grid gap-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Title</label>
+                      <Input
+                        value={sectionDraft.title}
+                        onChange={(event) => {
+                          setSectionForms((current) => ({
+                            ...current,
+                            [section.id]: { ...sectionDraft, title: event.target.value },
+                          }));
+                          setSectionErrors((current) => ({
+                            ...current,
+                            [section.id]: { ...current[section.id], title: undefined },
+                          }));
+                        }}
+                        disabled={isReadOnly}
+                        className={sectionError.title ? "border-destructive focus-visible:ring-destructive" : ""}
+                      />
+                      {sectionError.title && <p className="text-xs text-destructive">{sectionError.title}</p>}
+                    </div>
+                    <div className="grid gap-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Position</label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={sectionDraft.position}
+                        onChange={(event) => {
+                          setSectionForms((current) => ({
+                            ...current,
+                            [section.id]: { ...sectionDraft, position: event.target.value },
+                          }));
+                          setSectionErrors((current) => ({
+                            ...current,
+                            [section.id]: { ...current[section.id], position: undefined },
+                          }));
+                        }}
+                        disabled={isReadOnly}
+                        className={sectionError.position ? "border-destructive focus-visible:ring-destructive" : ""}
+                      />
+                      {sectionError.position && <p className="text-xs text-destructive">{sectionError.position}</p>}
+                    </div>
+                    <div className="grid gap-1.5 md:col-span-3">
+                      <label className="text-xs font-medium text-muted-foreground">Instructions</label>
+                      <Textarea
+                        value={sectionDraft.instructions}
+                        onChange={(event) => {
+                          setSectionForms((current) => ({
+                            ...current,
+                            [section.id]: { ...sectionDraft, instructions: event.target.value },
+                          }));
+                          setSectionErrors((current) => ({
+                            ...current,
+                            [section.id]: { ...current[section.id], instructions: undefined },
+                          }));
+                        }}
+                        disabled={isReadOnly}
+                        className={`min-h-20 ${sectionError.instructions ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                      />
+                      {sectionError.instructions && <p className="text-xs text-destructive">{sectionError.instructions}</p>}
+                    </div>
+                    <div className="md:col-span-3 flex items-center justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isReadOnly || updateSectionMutation.isPending}
+                        onClick={() => void updateSectionMutation.mutateAsync({ sectionId: section.id, payload: sectionDraft })}
+                      >
+                        {updateSectionMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                        <span className="ml-1.5">Save section</span>
+                      </Button>
+                    </div>
+                  </div>
+
+                  <ol className="divide-y">
+                    {sortedQuestions.map((question) => {
+                      const draft = questionForms[question.id] ?? toQuestionForm(question);
+                      const questionError = questionErrors[question.id] ?? {};
+
+                      return (
+                        <li key={question.id} className="flex items-start gap-3 px-4 py-3 hover:bg-muted/20">
+                          <GripVertical className="h-4 w-4 text-muted-foreground mt-1" />
+                          <span className="text-xs font-mono text-muted-foreground w-6 mt-1">
+                            {question.position}.
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium line-clamp-1">
+                              {question.question_snapshot.content}
+                            </div>
+                            <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
+                              <Lock className="h-3 w-3" />
+                              Snapshot · {question.question_id} · {question.question_snapshot.type}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <span className="text-muted-foreground">Pos</span>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={draft.position}
+                              onChange={(event) => {
+                                setQuestionForms((current) => ({
+                                  ...current,
+                                  [question.id]: { ...draft, position: event.target.value },
+                                }));
+                                setQuestionErrors((current) => ({
+                                  ...current,
+                                  [question.id]: { ...current[question.id], position: undefined },
+                                }));
+                              }}
+                              className={`h-7 w-16 text-center ${questionError.position ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                              disabled={isReadOnly}
+                            />
+                            <span className="text-muted-foreground">Score</span>
+                            <Input
+                              type="number"
+                              value={draft.score_override}
+                              onChange={(event) => {
+                                setQuestionForms((current) => ({
+                                  ...current,
+                                  [question.id]: { ...draft, score_override: event.target.value },
+                                }));
+                                setQuestionErrors((current) => ({
+                                  ...current,
+                                  [question.id]: { ...current[question.id], score_override: undefined },
+                                }));
+                              }}
+                              className={`h-7 w-16 text-center ${questionError.score_override ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                              disabled={isReadOnly}
+                            />
+                          </div>
+                          {questionError.position || questionError.score_override ? (
+                            <div className="text-xs text-destructive">
+                              {questionError.position ?? questionError.score_override}
+                            </div>
+                          ) : null}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            disabled={isReadOnly}
+                            onClick={() => void moveQuestion(section.id, question.id, "up")}
+                          >
+                            <ChevronUp className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            disabled={isReadOnly}
+                            onClick={() => void moveQuestion(section.id, question.id, "down")}
+                          >
+                            <ChevronDown className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            disabled={isReadOnly || updateQuestionMutation.isPending}
+                            onClick={() =>
+                              void updateQuestionMutation.mutateAsync({
+                                sectionId: section.id,
+                                sectionQuestionId: question.id,
+                                payload: draft,
+                              })
+                            }
+                          >
+                            <Save className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            disabled={isReadOnly || deleteQuestionMutation.isPending}
+                            onClick={() =>
+                              void deleteQuestionMutation.mutateAsync({
+                                sectionId: section.id,
+                                sectionQuestionId: question.id,
+                              })
+                            }
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                          </Button>
+                        </li>
+                      );
+                    })}
+                  </ol>
+
+                  <div className="border-t bg-muted/20 p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div className="md:col-span-2 grid gap-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Attach question</label>
+                      <Select
+                        value={attachDraft.question_id}
+                        onValueChange={(value) =>
+                          setAttachForms((current) => ({
+                            ...current,
+                            [section.id]: { ...attachDraft, question_id: value },
+                          }))
+                        }
+                        disabled={isReadOnly}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose a published question" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {bankQuestions.map((question) => (
+                            <SelectItem key={question.id} value={question.id}>
+                              {question.id} · {question.content.slice(0, 50)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {attachError.question_id && <p className="text-xs text-destructive">{attachError.question_id}</p>}
+                    </div>
+                    <div className="grid gap-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Position</label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={attachDraft.position}
+                        onChange={(event) => {
+                          setAttachForms((current) => ({
+                            ...current,
+                            [section.id]: { ...attachDraft, position: event.target.value },
+                          }));
+                          setAttachErrors((current) => ({
+                            ...current,
+                            [section.id]: { ...current[section.id], position: undefined },
+                          }));
+                        }}
+                        disabled={isReadOnly}
+                        className={attachError.position ? "border-destructive focus-visible:ring-destructive" : ""}
+                      />
+                      {attachError.position && <p className="text-xs text-destructive">{attachError.position}</p>}
+                    </div>
+                    <div className="grid gap-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Score override</label>
+                      <Input
+                        type="number"
+                        value={attachDraft.score_override}
+                        onChange={(event) => {
+                          setAttachForms((current) => ({
+                            ...current,
+                            [section.id]: { ...attachDraft, score_override: event.target.value },
+                          }));
+                          setAttachErrors((current) => ({
+                            ...current,
+                            [section.id]: { ...current[section.id], score_override: undefined },
+                          }));
+                        }}
+                        disabled={isReadOnly}
+                        className={attachError.score_override ? "border-destructive focus-visible:ring-destructive" : ""}
+                      />
+                      {attachError.score_override && <p className="text-xs text-destructive">{attachError.score_override}</p>}
+                    </div>
+                    <div className="md:col-span-4 flex justify-end">
+                      <Button
+                        size="sm"
+                        className="bg-brand text-brand-foreground hover:bg-brand/90"
+                        disabled={isReadOnly || attachQuestionMutation.isPending || !attachDraft.question_id}
+                        onClick={() =>
+                          void attachQuestionMutation.mutateAsync({
+                            sectionId: section.id,
+                            payload: attachDraft,
+                          })
+                        }
+                      >
+                        <Plus className="h-3.5 w-3.5 mr-1.5" />
+                        Attach question
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+
+            {!isReadOnly && (
+              <Card className="p-4 border-dashed">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div className="grid gap-1.5 md:col-span-2">
+                    <label className="text-xs font-medium text-muted-foreground">New section title</label>
+                    <Input
+                      value={newSectionForm.title}
+                      onChange={(event) => {
+                        setNewSectionForm((current) => ({ ...current, title: event.target.value }));
+                        setNewSectionErrors((current) => ({ ...current, title: undefined }));
+                      }}
+                      placeholder="Part 1"
+                      className={newSectionErrors.title ? "border-destructive focus-visible:ring-destructive" : ""}
+                    />
+                    {newSectionErrors.title && <p className="text-xs text-destructive">{newSectionErrors.title}</p>}
+                  </div>
+                  <div className="grid gap-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Position</label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={newSectionForm.position}
+                      onChange={(event) => {
+                        setNewSectionForm((current) => ({ ...current, position: event.target.value }));
+                        setNewSectionErrors((current) => ({ ...current, position: undefined }));
+                      }}
+                      className={newSectionErrors.position ? "border-destructive focus-visible:ring-destructive" : ""}
+                    />
+                    {newSectionErrors.position && <p className="text-xs text-destructive">{newSectionErrors.position}</p>}
+                  </div>
+                  <div className="grid gap-1.5 md:col-span-4">
+                    <label className="text-xs font-medium text-muted-foreground">Instructions</label>
+                    <Textarea
+                      value={newSectionForm.instructions}
+                      onChange={(event) => {
+                        setNewSectionForm((current) => ({ ...current, instructions: event.target.value }));
+                        setNewSectionErrors((current) => ({ ...current, instructions: undefined }));
+                      }}
+                      className={`min-h-20 ${newSectionErrors.instructions ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                    />
+                    {newSectionErrors.instructions && <p className="text-xs text-destructive">{newSectionErrors.instructions}</p>}
+                  </div>
+                  <div className="md:col-span-4 flex justify-end">
+                    <Button
+                      variant="outline"
+                      className="border-dashed"
+                      disabled={!testId || addSectionMutation.isPending}
+                      onClick={() => void addSectionMutation.mutateAsync()}
+                    >
+                      {addSectionMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Plus className="h-4 w-4" />
+                      )}
+                      <span className="ml-1.5">Add section</span>
+                    </Button>
+                  </div>
                 </div>
-                <ol className="divide-y">
-                  {s.questions.map((q, idx) => (
-                    <li key={q.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20">
-                      <GripVertical className="h-4 w-4 text-muted-foreground"/>
-                      <span className="text-xs font-mono text-muted-foreground w-6">{idx + 1}.</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium line-clamp-1">{q.text}</div>
-                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
-                          <Lock className="h-3 w-3"/> Snapshot · {q.id} · {q.type}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs">
-                        <span className="text-muted-foreground">Score</span>
-                        <Input defaultValue={q.score} className="h-7 w-14 text-center"/>
-                      </div>
-                      <Button variant="ghost" size="icon" className="h-7 w-7"><Trash2 className="h-3.5 w-3.5 text-destructive"/></Button>
-                    </li>
-                  ))}
-                </ol>
-                <button className="w-full px-4 py-2.5 text-xs text-muted-foreground hover:bg-muted/30 border-t flex items-center justify-center gap-1.5">
-                  <Plus className="h-3.5 w-3.5"/> Drop a question here
-                </button>
+                {!testId && (
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Save the draft first to enable section and question management.
+                  </p>
+                )}
               </Card>
-            ))}
-            <Button variant="outline" className="w-full border-dashed h-12"><Plus className="h-4 w-4 mr-1.5"/> Add section</Button>
+            )}
           </div>
         </div>
       </div>

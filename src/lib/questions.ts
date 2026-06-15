@@ -134,6 +134,19 @@ export async function listQuestionsByTags(
   return normalizeList(response.data, { page, per_page });
 }
 
+export async function listAllQuestions(params: Omit<QuestionListParams, "page"> = {}) {
+  const firstPage = await listQuestions({ ...params, page: 1, per_page: params.per_page ?? 50 });
+  if (firstPage.lastPage <= 1) return firstPage.questions;
+
+  const pages = await Promise.all(
+    Array.from({ length: firstPage.lastPage - 1 }, (_, index) =>
+      listQuestions({ ...params, page: index + 2, per_page: firstPage.perPage }),
+    ),
+  );
+
+  return [firstPage.questions, ...pages.map((page) => page.questions)].flat();
+}
+
 export async function createQuestion(payload: QuestionPayload) {
   const response = await api.post("/v1/questions", payload);
   return normalizeQuestion(response.data);

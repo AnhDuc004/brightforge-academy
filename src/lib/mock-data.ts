@@ -73,15 +73,6 @@ export const assignments = [
   { id: "A-505", test: "Biology Midterm – Fall 2026", assignee: "Section C", assignedBy: "Ayesha K.", due: "2026-05-15", attempts: 1, status: "Completed" },
 ];
 
-export const users = [
-  { id: 1, name: "Ayesha Khan", email: "ayesha@abcuniversity.edu", role: "Tenant Admin", status: "Active", lastActive: "2m ago" },
-  { id: 2, name: "Daniel Rivera", email: "daniel.r@abcuniversity.edu", role: "Question Creator", status: "Active", lastActive: "1h ago" },
-  { id: 3, name: "Maria Gomez", email: "maria.g@abcuniversity.edu", role: "Question Creator", status: "Active", lastActive: "3h ago" },
-  { id: 4, name: "John Park", email: "john.p@abcuniversity.edu", role: "Reviewer", status: "Active", lastActive: "Yesterday" },
-  { id: 5, name: "Liu Wei", email: "liu.w@abcuniversity.edu", role: "Assignee", status: "Active", lastActive: "5d ago" },
-  { id: 6, name: "Priya Nair", email: "priya.n@abcuniversity.edu", role: "Assignee", status: "Suspended", lastActive: "2w ago" },
-];
-
 export const auditLogs = [
   { id: 1, actor: "Ayesha Khan", action: "PUBLISH", resource: "Test T-101", time: "2026-06-10 09:42:11" },
   { id: 2, actor: "Daniel Rivera", action: "CREATE", resource: "Question Q-2048", time: "2026-06-10 09:21:03" },
@@ -91,24 +82,3 @@ export const auditLogs = [
   { id: 6, actor: "Ayesha Khan", action: "INVITE", resource: "User liu.w@abc.edu", time: "2026-06-09 11:02:54" },
   { id: 7, actor: "Priya Nair", action: "SUBMIT", resource: "Attempt #18198", time: "2026-06-09 10:48:31" },
 ];
-
-export const permissions = [
-  { key: "questions.create", label: "Create Questions" },
-  { key: "questions.publish", label: "Publish Questions" },
-  { key: "tests.build", label: "Build Tests" },
-  { key: "tests.publish", label: "Publish Tests" },
-  { key: "assignments.manage", label: "Manage Assignments" },
-  { key: "grading.review", label: "Review & Grade" },
-  { key: "users.manage", label: "Manage Users" },
-  { key: "tenant.settings", label: "Tenant Settings" },
-  { key: "audit.view", label: "View Audit Logs" },
-];
-
-export const roles = ["Tenant Admin", "Question Creator", "Reviewer", "Assignee"] as const;
-
-export const roleMatrix: Record<string, string[]> = {
-  "Tenant Admin": permissions.map((p) => p.key),
-  "Question Creator": ["questions.create", "questions.publish", "tests.build"],
-  "Reviewer": ["grading.review"],
-  "Assignee": [],
-};
