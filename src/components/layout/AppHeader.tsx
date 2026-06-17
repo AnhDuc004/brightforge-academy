@@ -1,6 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bell, Search, ChevronDown, Building2, HelpCircle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,34 +9,19 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { currentUser, tenants } from "@/lib/mock-data";
 import api from "@/lib/axios";
 import {
   clearAccessToken,
-  getAccessToken,
   getInitials,
-  getTenantId,
-  setTenantId,
-  type AuthProfile,
+  hasPermission,
 } from "@/lib/auth";
+import { useAuthContextQuery } from "@/lib/auth-context";
 
 export function AppHeader({ breadcrumbs = [] as { label: string; to?: string }[] }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const token = getAccessToken();
 
-  const meQuery = useQuery({
-    queryKey: ["auth", "me"],
-    enabled: Boolean(token),
-    queryFn: async () => {
-      const response = await api.get<{ success: boolean; message: string; data: AuthProfile }>(
-        "/v1/auth/me",
-      );
-      return response.data.data;
-    },
-    staleTime: 60_000,
-    retry: false,
-  });
+  const meQuery = useAuthContextQuery();
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
@@ -51,13 +35,10 @@ export function AppHeader({ breadcrumbs = [] as { label: string; to?: string }[]
     },
   });
 
-  const profile = meQuery.data;
-
-  useEffect(() => {
-    if (profile?.tenant_id && !getTenantId()) {
-      setTenantId(profile.tenant_id);
-    }
-  }, [profile?.tenant_id]);
+  const context = meQuery.data;
+  const profile = context?.user;
+  const tenantName = context?.tenant?.name ?? "Current tenant";
+  const showCreate = hasPermission(context, ["questions.create", "tests.build", "assignments.manage"]);
 
   const profileName = profile?.display_name ?? (meQuery.isLoading ? "Loading user..." : "Unknown user");
   const profileEmail = profile?.email ?? (meQuery.isLoading ? "Fetching profile..." : "No email available");
@@ -69,19 +50,22 @@ export function AppHeader({ breadcrumbs = [] as { label: string; to?: string }[]
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm" className="h-9 gap-2 font-medium">
             <Building2 className="h-4 w-4 text-brand" />
-            <span className="hidden sm:inline">{currentUser.tenant}</span>
+            <span className="hidden sm:inline">{tenantName}</span>
             <ChevronDown className="h-3.5 w-3.5 opacity-60" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-56">
-          <DropdownMenuLabel>Switch tenant</DropdownMenuLabel>
+          <DropdownMenuLabel>Tenant context</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          {tenants.map((t) => (
-            <DropdownMenuItem key={t}>
-              <Building2 className="mr-2 h-4 w-4" />
-              {t}
+          <DropdownMenuItem disabled>
+            <Building2 className="mr-2 h-4 w-4" />
+            {tenantName}
+          </DropdownMenuItem>
+          {context?.tenant?.id && (
+            <DropdownMenuItem disabled className="font-mono text-xs text-muted-foreground">
+              {context.tenant.id}
             </DropdownMenuItem>
-          ))}
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -105,9 +89,11 @@ export function AppHeader({ breadcrumbs = [] as { label: string; to?: string }[]
           <kbd className="absolute right-2 top-1/2 -translate-y-1/2 hidden lg:inline-flex h-5 select-none items-center gap-1 rounded border bg-background px-1.5 font-mono text-[10px] font-medium text-muted-foreground">⌘K</kbd>
         </div>
 
-        <Button size="sm" className="h-9 bg-brand text-brand-foreground hover:bg-brand/90 gap-1.5 shadow-sm">
-          <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Create</span>
-        </Button>
+        {showCreate && (
+          <Button size="sm" className="h-9 bg-brand text-brand-foreground hover:bg-brand/90 gap-1.5 shadow-sm">
+            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Create</span>
+          </Button>
+        )}
 
         <Button variant="ghost" size="icon" className="h-9 w-9"><HelpCircle className="h-4.5 w-4.5" /></Button>
 
@@ -142,6 +128,11 @@ export function AppHeader({ breadcrumbs = [] as { label: string; to?: string }[]
                 Tenant ID: {profile.tenant_id.slice(0, 8)}
               </DropdownMenuItem>
             )}
+            {context?.roles.length ? (
+              <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                Role: {context.roles.map((role) => role.name).join(", ")}
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem>Profile</DropdownMenuItem>
             <DropdownMenuItem>Preferences</DropdownMenuItem>
             <DropdownMenuItem>Keyboard shortcuts</DropdownMenuItem>

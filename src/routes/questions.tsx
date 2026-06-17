@@ -65,7 +65,7 @@ export const Route = createFileRoute("/questions")({
   component: QuestionsPage,
 });
 
-const questionTypes: QuestionType[] = ["single_choice", "multiple_choice", "short_answer", "essay", "true_false"];
+const questionTypes: QuestionType[] = ["multiple_choice", "short_answer", "essay", "true_false"];
 const difficulties: QuestionDifficulty[] = ["easy", "medium", "hard"];
 const statuses: QuestionStatus[] = ["draft", "published", "archived"];
 

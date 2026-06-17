@@ -13,7 +13,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
-import { getAccessToken } from "@/lib/auth";
+import { clearAccessToken, getAccessToken, hasPermission, type AuthContext } from "@/lib/auth";
+import { useAuthContextQuery } from "@/lib/auth-context";
 
 function NotFoundComponent() {
   return (
@@ -131,6 +132,7 @@ function AuthGate() {
   const router = useRouter();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [authState, setAuthState] = useState<"loading" | "guest" | "authed">("loading");
+  const authQuery = useAuthContextQuery();
 
   useEffect(() => {
     setAuthState(getAccessToken() ? "authed" : "guest");
@@ -145,6 +147,9 @@ function AuthGate() {
   const isAuthRoute = pathname === "/login" || pathname === "/register";
   const shouldRedirectToLogin = authState === "guest" && !isAuthRoute;
   const shouldRedirectToDashboard = authState === "authed" && isAuthRoute;
+  const requiredPermission = getRequiredPermission(pathname);
+  const hasRouteAccess = authState !== "authed" || hasPermission(authQuery.data, requiredPermission);
+  const fallbackRoute = authQuery.data ? getDefaultRoute(authQuery.data) : "/";
 
   useEffect(() => {
     if (shouldRedirectToLogin) {
@@ -153,11 +158,43 @@ function AuthGate() {
     }
 
     if (shouldRedirectToDashboard) {
-      router.navigate({ to: "/", replace: true });
+      router.navigate({ to: fallbackRoute as never, replace: true });
+      return;
     }
-  }, [pathname, router, shouldRedirectToDashboard, shouldRedirectToLogin]);
 
-  if (authState === "loading" || shouldRedirectToLogin || shouldRedirectToDashboard) {
+    if (authState === "authed" && authQuery.isError) {
+      clearAccessToken();
+      router.navigate({ to: "/login", replace: true });
+      return;
+    }
+
+    if (authState === "authed" && !authQuery.isLoading && !hasRouteAccess) {
+      router.navigate({ to: fallbackRoute as never, replace: true });
+      return;
+    }
+
+    if (authState === "authed" && pathname === "/" && fallbackRoute !== "/") {
+      router.navigate({ to: fallbackRoute as never, replace: true });
+    }
+  }, [
+    authQuery.isError,
+    authQuery.isLoading,
+    authState,
+    fallbackRoute,
+    hasRouteAccess,
+    pathname,
+    router,
+    shouldRedirectToDashboard,
+    shouldRedirectToLogin,
+  ]);
+
+  if (
+    authState === "loading" ||
+    shouldRedirectToLogin ||
+    shouldRedirectToDashboard ||
+    (authState === "authed" && authQuery.isLoading && !authQuery.data) ||
+    (authState === "authed" && !hasRouteAccess)
+  ) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(245,179,1,0.14),_transparent_30%),linear-gradient(180deg,_#0b0b0b_0%,_#111111_100%)] text-white">
         <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 shadow-lg backdrop-blur">
@@ -169,4 +206,25 @@ function AuthGate() {
   }
 
   return <Outlet />;
+}
+
+function getRequiredPermission(pathname: string) {
+  if (pathname.startsWith("/questions/new")) return "questions.create";
+  if (pathname.startsWith("/questions")) return "questions.view";
+  if (pathname.startsWith("/tests/builder")) return "tests.build";
+  if (pathname.startsWith("/tests")) return "tests.view";
+  if (pathname.startsWith("/grading")) return "grading.review";
+  if (pathname.startsWith("/results")) return ["reports.view", "grading.review"];
+  if (pathname.startsWith("/users")) return "users.manage";
+  if (pathname.startsWith("/audit")) return "audit.view";
+  return undefined;
+}
+
+function getDefaultRoute(context: AuthContext) {
+  if (hasPermission(context, "users.manage")) return "/";
+  if (hasPermission(context, "questions.view")) return "/questions";
+  if (hasPermission(context, "tests.view")) return "/tests";
+  if (hasPermission(context, "assignments.manage")) return "/assignments";
+  if (hasPermission(context, "grading.review")) return "/grading";
+  return "/assignments";
 }

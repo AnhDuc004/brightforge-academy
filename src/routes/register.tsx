@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -8,7 +9,14 @@ import axios from "axios";
 import { toast } from "sonner";
 
 import api from "@/lib/axios";
-import { parseApiError, pickAccessToken, pickTenantId, setAuthSession } from "@/lib/auth";
+import {
+  clearAccessToken,
+  parseApiError,
+  pickAccessToken,
+  pickTenantId,
+  setAuthSession,
+} from "@/lib/auth";
+import { fetchAuthContext } from "@/lib/auth-context";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -43,6 +51,7 @@ export const Route = createFileRoute("/register")({
 
 function RegisterPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [serverError, setServerError] = useState("");
 
   const form = useForm<RegisterValues>({
@@ -60,8 +69,11 @@ function RegisterPage() {
     setServerError("");
 
     try {
+      clearAccessToken();
+      queryClient.removeQueries({ queryKey: ["auth", "me"] });
+
       const response = await api.post("/v1/auth/register", {
-        name: values.name,
+        display_name: values.name,
         email: values.email,
         password: values.password,
         password_confirmation: values.passwordConfirmation,
@@ -78,6 +90,8 @@ function RegisterPage() {
         }
 
         setAuthSession(token, tenantId);
+        const context = await fetchAuthContext();
+        queryClient.setQueryData(["auth", "me", token], context);
         toast.success("Account created and signed in.");
         router.navigate({ to: "/", replace: true });
         return;

@@ -1,19 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import {
   Archive,
   Clipboard,
   Eye,
+  FileStack,
   Key,
   Loader2,
   MoreHorizontal,
   Pencil,
+  PlayCircle,
   Plus,
   RefreshCw,
   Search,
   Trash2,
+  Trophy,
+  User,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,7 +44,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { getTenantId, parseApiError } from "@/lib/auth";
+import { getTenantId, hasPermission, parseApiError } from "@/lib/auth";
+import { useAuthContextQuery } from "@/lib/auth-context";
 import { listAllTests, type TestResource } from "@/lib/tests";
 import { listAllUsers, type UserResource } from "@/lib/user-management";
 import {
@@ -52,6 +57,8 @@ import {
   deleteAssignment,
   getAssignment,
   listAssignments,
+  listMyAssignments,
+  startAssignmentAttempt,
   updateAssignment,
   verifyAssignmentToken,
 } from "@/lib/assignments";
@@ -161,8 +168,220 @@ function extractAssignmentErrors(error: z.ZodError): AssignmentFieldErrors {
   return fieldErrors;
 }
 
+type AttemptSummary = {
+  id: string;
+  status: string;
+  submitted_at?: string | null;
+  total_score?: number | null;
+  auto_score?: number | null;
+  manual_score?: number | null;
+  is_passed?: boolean | null;
+  is_finalized?: boolean | null;
+};
+
+function AssignmentDetailView({
+  assignment,
+  canManageAssignments,
+  canReview,
+  canViewReports,
+  onStartAttempt,
+}: {
+  assignment: Assignment;
+  canManageAssignments: boolean;
+  canReview: boolean;
+  canViewReports: boolean;
+  onStartAttempt: () => void;
+}) {
+  const attempts = getAttemptSummaries(assignment);
+  const latestAttempt = attempts[0] ?? null;
+  const score = latestAttempt?.total_score ?? getNumberField(assignment, ["total_score", "score", "final_score"]);
+  const isFinalized = latestAttempt?.is_finalized ?? getBooleanField(assignment, ["is_finalized"]);
+  const isPassed = latestAttempt?.is_passed ?? getBooleanField(assignment, ["is_passed"]);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card className="p-4 sm:col-span-2">
+          <div className="flex items-start gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-brand/15">
+              <FileStack className="h-5 w-5 text-foreground" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">Test</div>
+              <h3 className="mt-1 truncate text-base font-semibold">{getTestLabel(assignment)}</h3>
+              <div className="mt-1 font-mono text-[11px] text-muted-foreground">{assignment.test_id}</div>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-4">
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">Result</div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-semibold">{score == null ? "—" : score}</span>
+            <span className="text-xs text-muted-foreground">{isFinalized ? "finalized" : "not finalized"}</span>
+          </div>
+          {isPassed != null && (
+            <Badge
+              variant="outline"
+              className={isPassed ? "mt-2 border-success/30 bg-success/15 text-success" : "mt-2 border-destructive/30 bg-destructive/10 text-destructive"}
+            >
+              {isPassed ? "Passed" : "Failed"}
+            </Badge>
+          )}
+        </Card>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Card className="p-4">
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
+            <User className="h-4 w-4 text-brand" />
+            Assignee
+          </div>
+          <DetailRow label="Name" value={getAssigneeLabel(assignment)} />
+          <DetailRow label="Assignee ID" value={assignment.assignee_id} mono />
+          <DetailRow label="Assigned by" value={getAssignedByLabel(assignment)} />
+        </Card>
+
+        <Card className="p-4">
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
+            <Key className="h-4 w-4 text-brand" />
+            Access & lifecycle
+          </div>
+          <DetailRow label="Status" value={<Badge variant="outline" className={statusTone(assignment.status)}>{assignment.status}</Badge>} />
+          <DetailRow label="Due at" value={formatDateTimeForDisplay(assignment.due_at)} />
+          <DetailRow label="Access type" value={assignment.access_type} />
+          <DetailRow label="Max attempts" value={String(assignment.max_attempts)} />
+        </Card>
+      </div>
+
+      <Card className="p-4">
+        <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
+          <Trophy className="h-4 w-4 text-brand" />
+          Attempts and scores
+        </div>
+        {attempts.length === 0 ? (
+          <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
+            No attempt score was returned by the assignment detail API yet.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-xs uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="py-2 text-left font-medium">Attempt</th>
+                  <th className="py-2 text-left font-medium">Status</th>
+                  <th className="py-2 text-left font-medium">Submitted</th>
+                  <th className="py-2 text-left font-medium">Auto</th>
+                  <th className="py-2 text-left font-medium">Manual</th>
+                  <th className="py-2 text-left font-medium">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {attempts.map((attempt) => (
+                  <tr key={attempt.id}>
+                    <td className="py-2 font-mono text-xs">{attempt.id.slice(0, 8)}</td>
+                    <td className="py-2">{attempt.status}</td>
+                    <td className="py-2">{formatDateTimeForDisplay(attempt.submitted_at)}</td>
+                    <td className="py-2">{attempt.auto_score ?? "—"}</td>
+                    <td className="py-2">{attempt.manual_score ?? "—"}</td>
+                    <td className="py-2 font-semibold">{attempt.total_score ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <div className="flex flex-wrap justify-end gap-2">
+        {!canManageAssignments && assignment.status !== "completed" && (
+          <Button className="bg-brand text-brand-foreground hover:bg-brand/90" onClick={onStartAttempt}>
+            <PlayCircle className="mr-1.5 h-4 w-4" />
+            Start attempt
+          </Button>
+        )}
+        {canReview && (
+          <Button asChild variant="outline">
+            <Link to="/grading">Open grading</Link>
+          </Button>
+        )}
+        {canViewReports && (
+          <Button asChild variant="outline">
+            <Link to="/results">Open reports</Link>
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DetailRow({ label, value, mono = false }: { label: string; value: React.ReactNode; mono?: boolean }) {
+  return (
+    <div className="grid grid-cols-[112px_1fr] gap-3 py-1.5 text-sm">
+      <div className="text-muted-foreground">{label}</div>
+      <div className={mono ? "break-all font-mono text-xs" : "min-w-0"}>{value || "—"}</div>
+    </div>
+  );
+}
+
+function asRecord(value: unknown) {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function getNumberField(source: unknown, fields: string[]) {
+  const record = asRecord(source);
+  for (const field of fields) {
+    if (typeof record[field] === "number") return record[field] as number;
+  }
+  return null;
+}
+
+function getBooleanField(source: unknown, fields: string[]) {
+  const record = asRecord(source);
+  for (const field of fields) {
+    if (typeof record[field] === "boolean") return record[field] as boolean;
+  }
+  return null;
+}
+
+function getAttemptSummaries(assignment: Assignment): AttemptSummary[] {
+  const record = asRecord(assignment);
+  const candidates = [
+    record.attempts,
+    record.assignment_attempts,
+    record.results,
+    record.submissions,
+    record.latest_attempt ? [record.latest_attempt] : null,
+    record.attempt ? [record.attempt] : null,
+  ];
+
+  const rawAttempts = candidates.find(Array.isArray) as unknown[] | undefined;
+  if (!rawAttempts) return [];
+
+  return rawAttempts
+    .map((attempt) => {
+      const item = asRecord(attempt);
+      return {
+        id: String(item.id ?? item.attempt_id ?? ""),
+        status: String(item.status ?? "unknown"),
+        submitted_at: typeof item.submitted_at === "string" ? item.submitted_at : null,
+        total_score: typeof item.total_score === "number" ? item.total_score : getNumberField(item, ["score", "final_score"]),
+        auto_score: typeof item.auto_score === "number" ? item.auto_score : null,
+        manual_score: typeof item.manual_score === "number" ? item.manual_score : null,
+        is_passed: typeof item.is_passed === "boolean" ? item.is_passed : null,
+        is_finalized: typeof item.is_finalized === "boolean" ? item.is_finalized : null,
+      };
+    })
+    .filter((attempt) => attempt.id);
+}
+
 function AssignmentsPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const authQuery = useAuthContextQuery();
+  const canManageAssignments = hasPermission(authQuery.data, "assignments.manage");
+  const canReview = hasPermission(authQuery.data, "grading.review");
+  const canViewReports = hasPermission(authQuery.data, ["reports.view", "grading.review"]);
   const tenantId = getTenantId() ?? undefined;
 
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -188,12 +407,14 @@ function AssignmentsPage() {
   const testsQuery = useQuery({
     queryKey: ["tests", "published", tenantId],
     queryFn: () => listAllTests({ status: "published" }),
+    enabled: canManageAssignments,
     staleTime: 30_000,
   });
 
   const usersQuery = useQuery({
     queryKey: ["admin", "users", tenantId],
     queryFn: () => listAllUsers({ tenant_id: tenantId }),
+    enabled: canManageAssignments,
     staleTime: 30_000,
   });
 
@@ -213,11 +434,13 @@ function AssignmentsPage() {
     setIsLoading(true);
 
     try {
-      const result = await listAssignments({
-        page: nextPage,
-        per_page: 10,
-        assignee_id: nextAssigneeFilter,
-      });
+      const result = canManageAssignments
+        ? await listAssignments({
+            page: nextPage,
+            per_page: 10,
+            assignee_id: nextAssigneeFilter,
+          })
+        : await listMyAssignments({ page: nextPage, per_page: 10 });
 
       setAssignments(result.assignments);
       setPage(result.page);
@@ -251,7 +474,7 @@ function AssignmentsPage() {
 
   useEffect(() => {
     void loadAssignments(1, "");
-  }, []);
+  }, [canManageAssignments]);
 
   function openCreateDialog() {
     setEditingAssignment(null);
@@ -334,6 +557,19 @@ function AssignmentsPage() {
     }
   }
 
+  async function handleStartAttempt(assignment: Assignment) {
+    try {
+      const attempt = await startAssignmentAttempt(assignment.id);
+      const attemptId =
+        attempt && typeof attempt === "object" && "id" in attempt ? String((attempt as { id: unknown }).id) : "";
+
+      toast.success("Attempt started.");
+      navigate({ to: "/exam", search: attemptId ? ({ attemptId } as never) : undefined });
+    } catch (error) {
+      toast.error(parseApiError(error).message);
+    }
+  }
+
   async function handleView(assignment: Assignment) {
     setDetailOpen(true);
     setSelectedAssignment(null);
@@ -375,20 +611,30 @@ function AssignmentsPage() {
   return (
     <AppLayout
       breadcrumbs={[{ label: "Assignments" }, { label: "Active" }]}
-      title="Assignments"
-      description="Distribute published tests to students, manage lifecycle status, and verify assignment access tokens."
+      title={canManageAssignments ? "Assignments" : "My assignments"}
+      description={
+        canManageAssignments
+          ? "Distribute published tests to students, manage lifecycle status, and verify assignment access tokens."
+          : "Open assigned tests and continue your in-progress attempts."
+      }
       actions={
-        <>
-          <Button variant="outline" size="sm" onClick={() => setVerifyOpen(true)}>
-            <Key className="mr-1.5 h-4 w-4" /> Verify token
-          </Button>
+        canManageAssignments ? (
+          <>
+            <Button variant="outline" size="sm" onClick={() => setVerifyOpen(true)}>
+              <Key className="mr-1.5 h-4 w-4" /> Verify token
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => loadAssignments(page, appliedAssigneeFilter)}>
+              <RefreshCw className="mr-1.5 h-4 w-4" /> Refresh
+            </Button>
+            <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90" onClick={openCreateDialog}>
+              <Plus className="mr-1.5 h-4 w-4" /> Assign test
+            </Button>
+          </>
+        ) : (
           <Button variant="outline" size="sm" onClick={() => loadAssignments(page, appliedAssigneeFilter)}>
             <RefreshCw className="mr-1.5 h-4 w-4" /> Refresh
           </Button>
-          <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90" onClick={openCreateDialog}>
-            <Plus className="mr-1.5 h-4 w-4" /> Assign test
-          </Button>
-        </>
+        )
       }
     >
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-5">
@@ -401,34 +647,36 @@ function AssignmentsPage() {
       </div>
 
       <Card className="overflow-hidden">
-        <form className="flex flex-wrap items-center gap-2 border-b p-3" onSubmit={applyAssigneeFilter}>
-          <div className="relative min-w-[260px] flex-1 max-w-md">
-            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={assigneeFilter}
-              onChange={(event) => setAssigneeFilter(event.target.value)}
-              placeholder="Filter by assignee ID"
-              className="h-9 pl-8"
-            />
-          </div>
-          <Button type="submit" variant="outline" size="sm">
-            Apply
-          </Button>
-          {appliedAssigneeFilter && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setAssigneeFilter("");
-                setAppliedAssigneeFilter("");
-                void loadAssignments(1, "");
-              }}
-            >
-              Clear
+        {canManageAssignments && (
+          <form className="flex flex-wrap items-center gap-2 border-b p-3" onSubmit={applyAssigneeFilter}>
+            <div className="relative min-w-[260px] flex-1 max-w-md">
+              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={assigneeFilter}
+                onChange={(event) => setAssigneeFilter(event.target.value)}
+                placeholder="Filter by assignee ID"
+                className="h-9 pl-8"
+              />
+            </div>
+            <Button type="submit" variant="outline" size="sm">
+              Apply
             </Button>
-          )}
-        </form>
+            {appliedAssigneeFilter && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setAssigneeFilter("");
+                  setAppliedAssigneeFilter("");
+                  void loadAssignments(1, "");
+                }}
+              >
+                Clear
+              </Button>
+            )}
+          </form>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -497,19 +745,28 @@ function AssignmentsPage() {
                           <DropdownMenuItem onClick={() => void handleView(assignment)}>
                             <Eye className="h-4 w-4" /> View details
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openEditDialog(assignment)}>
-                            <Pencil className="h-4 w-4" /> Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => void handleArchive(assignment)}>
-                            <Archive className="h-4 w-4" /> Archive
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => void handleDelete(assignment)}
-                          >
-                            <Trash2 className="h-4 w-4" /> Delete
-                          </DropdownMenuItem>
+                          {!canManageAssignments && (
+                            <DropdownMenuItem onClick={() => void handleStartAttempt(assignment)}>
+                              <PlayCircle className="h-4 w-4" /> Start attempt
+                            </DropdownMenuItem>
+                          )}
+                          {canManageAssignments && (
+                            <>
+                              <DropdownMenuItem onClick={() => openEditDialog(assignment)}>
+                                <Pencil className="h-4 w-4" /> Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => void handleArchive(assignment)}>
+                                <Archive className="h-4 w-4" /> Archive
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => void handleDelete(assignment)}
+                              >
+                                <Trash2 className="h-4 w-4" /> Delete
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
@@ -773,13 +1030,19 @@ function AssignmentsPage() {
       </Dialog>
 
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>Assignment details</DialogTitle>
-            <DialogDescription>Fetched from GET /api/v1/assignments/{selectedAssignment?.id || "id"}.</DialogDescription>
+            <DialogDescription>Test, assignee, lifecycle, and available scoring information.</DialogDescription>
           </DialogHeader>
           {selectedAssignment ? (
-            <Textarea value={JSON.stringify(selectedAssignment, null, 2)} readOnly className="min-h-80 font-mono text-xs" />
+            <AssignmentDetailView
+              assignment={selectedAssignment}
+              canManageAssignments={canManageAssignments}
+              canReview={canReview}
+              canViewReports={canViewReports}
+              onStartAttempt={() => void handleStartAttempt(selectedAssignment)}
+            />
           ) : (
             <div className="py-8 text-center text-sm text-muted-foreground">
               <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />

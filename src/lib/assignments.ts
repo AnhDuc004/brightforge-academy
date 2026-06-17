@@ -191,6 +191,17 @@ export async function listAssignments(params: AssignmentListParams = {}) {
   return normalizeList(response.data, { page, per_page });
 }
 
+export async function listMyAssignments(params: Pick<AssignmentListParams, "page" | "per_page"> = {}) {
+  const page = params.page ?? 1;
+  const per_page = params.per_page ?? 10;
+
+  const response = await api.get("/v1/assignments/my", {
+    params: { page, per_page },
+  });
+
+  return normalizeList(response.data, { page, per_page });
+}
+
 export async function createAssignment(payload: AssignmentPayload) {
   const response = await api.post("/v1/assignments", payload);
   return normalizeCreate(response.data);
@@ -213,4 +224,9 @@ export async function deleteAssignment(id: string) {
 export async function verifyAssignmentToken(access_token: string) {
   const response = await api.post("/v1/assignments/verify-token", { access_token });
   return response.data;
+}
+
+export async function startAssignmentAttempt(assignmentId: string) {
+  const response = await api.post(`/v1/assignments/${assignmentId}/start`);
+  return unwrapData(response.data);
 }

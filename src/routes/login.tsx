@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -8,7 +9,14 @@ import axios from "axios";
 import { toast } from "sonner";
 
 import api from "@/lib/axios";
-import { parseApiError, pickAccessToken, pickTenantId, setAuthSession } from "@/lib/auth";
+import {
+  clearAccessToken,
+  parseApiError,
+  pickAccessToken,
+  pickTenantId,
+  setAuthSession,
+} from "@/lib/auth";
+import { fetchAuthContext } from "@/lib/auth-context";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -36,6 +44,7 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [serverError, setServerError] = useState("");
 
   const form = useForm<LoginValues>({
@@ -48,9 +57,16 @@ function LoginPage() {
     setServerError("");
 
     try {
+      clearAccessToken();
+      queryClient.removeQueries({ queryKey: ["auth", "me"] });
+
       const response = await api.post("/v1/auth/login", values);
-      const token = pickAccessToken(response.data) ?? "mock-access-token";
+      const token = pickAccessToken(response.data);
       const tenantId = pickTenantId(response.data);
+
+      if (!token) {
+        throw new Error("Login response did not include an access token.");
+      }
 
       if (!tenantId) {
         console.warn(
@@ -59,6 +75,8 @@ function LoginPage() {
       }
 
       setAuthSession(token, tenantId);
+      const context = await fetchAuthContext();
+      queryClient.setQueryData(["auth", "me", token], context);
 
       toast.success("Đăng nhập thành công.");
       router.navigate({ to: "/", replace: true });

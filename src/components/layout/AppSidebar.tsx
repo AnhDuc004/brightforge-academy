@@ -1,54 +1,63 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  LayoutDashboard, FileQuestion, FolderTree, Tag, Wrench, FileStack,
-  Layers, Send, ClipboardList, CalendarClock, PlayCircle, Inbox,
-  CheckCheck, ListChecks, Trophy, BarChart3, Users, ShieldCheck,
-  Key, Settings, ScrollText, ChevronRight, GraduationCap,
+  LayoutDashboard, FileQuestion, Wrench, FileStack,
+  Layers, Send, ClipboardList, PlayCircle,
+  CheckCheck, Trophy, Users, ShieldCheck,
+  Key, ScrollText, ChevronRight, GraduationCap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { hasPermission, type AuthContext } from "@/lib/auth";
+import { useAuthContextQuery } from "@/lib/auth-context";
 
-type Item = { label: string; to: string; icon: React.ComponentType<{ className?: string }> };
+type Item = {
+  label: string;
+  to: string;
+  icon: React.ComponentType<{ className?: string }>;
+  permission?: string | string[];
+  studentFallback?: boolean;
+};
 type Group = { title: string; items: Item[] };
 
 const groups: Group[] = [
   { title: "Overview", items: [{ label: "Dashboard", to: "/", icon: LayoutDashboard }] },
   { title: "Question Bank", items: [
-    { label: "Questions", to: "/questions", icon: FileQuestion },
-    { label: "Categories", to: "/categories", icon: FolderTree },
-    { label: "Tags", to: "/tags", icon: Tag },
+    { label: "Questions", to: "/questions", icon: FileQuestion, permission: "questions.view" },
   ]},
   { title: "Test Builder", items: [
-    { label: "Tests", to: "/tests", icon: FileStack },
-    { label: "Sections", to: "/tests/builder", icon: Layers },
-    { label: "Published Tests", to: "/tests", icon: Send },
+    { label: "Tests", to: "/tests", icon: FileStack, permission: "tests.view" },
+    { label: "Builder", to: "/tests/builder", icon: Layers, permission: "tests.build" },
+    { label: "Published Tests", to: "/tests", icon: Send, permission: "tests.view" },
   ]},
   { title: "Assignments", items: [
-    { label: "Active Assignments", to: "/assignments", icon: ClipboardList },
-    { label: "Scheduled", to: "/assignments/scheduled", icon: CalendarClock },
+    { label: "Assignments", to: "/assignments", icon: ClipboardList, permission: "assignments.manage", studentFallback: true },
   ]},
   { title: "Attempts", items: [
-    { label: "Ongoing", to: "/attempts/ongoing", icon: PlayCircle },
-    { label: "Submitted", to: "/attempts/submitted", icon: Inbox },
+    { label: "Take exam", to: "/exam", icon: PlayCircle, studentFallback: true },
   ]},
   { title: "Grading", items: [
-    { label: "Pending Reviews", to: "/grading", icon: CheckCheck },
-    { label: "Reviewed Answers", to: "/grading/reviewed", icon: ListChecks },
+    { label: "Pending Reviews", to: "/grading", icon: CheckCheck, permission: "grading.review" },
   ]},
   { title: "Results", items: [
-    { label: "Exam Results", to: "/results", icon: Trophy },
-    { label: "Statistics", to: "/results/stats", icon: BarChart3 },
+    { label: "Exam Results", to: "/results", icon: Trophy, permission: ["reports.view", "grading.review"] },
   ]},
   { title: "Administration", items: [
-    { label: "Users", to: "/users", icon: Users },
-    { label: "Roles", to: "/users?tab=roles", icon: ShieldCheck },
-    { label: "Permissions", to: "/users?tab=permissions", icon: Key },
-    { label: "Tenant Settings", to: "/settings", icon: Settings },
-    { label: "Audit Logs", to: "/audit", icon: ScrollText },
+    { label: "Users", to: "/users", icon: Users, permission: "users.manage" },
+    { label: "Roles", to: "/users", icon: ShieldCheck, permission: "roles.view" },
+    { label: "Permissions", to: "/users", icon: Key, permission: "permissions.view" },
+    { label: "Audit Logs", to: "/audit", icon: ScrollText, permission: "audit.view" },
   ]},
 ];
 
 export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const authQuery = useAuthContextQuery();
+  const context = authQuery.data;
+  const visibleGroups = groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => canSeeItem(context, item)),
+    }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <aside className="hidden lg:flex w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
@@ -63,7 +72,7 @@ export function AppSidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
-        {groups.map((g) => (
+        {visibleGroups.map((g) => (
           <div key={g.title}>
             <div className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/45">
               {g.title}
@@ -105,4 +114,15 @@ export function AppSidebar() {
       </div>
     </aside>
   );
+}
+
+function canSeeItem(context: AuthContext | undefined, item: Item) {
+  if (item.permission && hasPermission(context, item.permission)) return true;
+  if (!item.permission) return true;
+  return Boolean(item.studentFallback && !hasAnyGrantedPermission(context));
+}
+
+function hasAnyGrantedPermission(context: AuthContext | undefined) {
+  if (!context) return false;
+  return context.permissions.length > 0 || context.roles.some((role) => role.name.toLowerCase().includes("admin"));
 }

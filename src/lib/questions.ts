@@ -1,6 +1,6 @@
 import api from "@/lib/axios";
 
-export type QuestionType = "single_choice" | "multiple_choice" | "short_answer" | "essay" | "true_false";
+export type QuestionType = "multiple_choice" | "short_answer" | "essay" | "true_false";
 export type QuestionDifficulty = "easy" | "medium" | "hard";
 export type QuestionStatus = "draft" | "published" | "archived";
 
