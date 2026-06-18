@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
@@ -42,7 +42,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { getTenantId, hasPermission, parseApiError } from "@/lib/auth";
 import { useAuthContextQuery } from "@/lib/auth-context";
@@ -68,27 +74,69 @@ export const Route = createFileRoute("/assignments")({
   component: AssignmentsPage,
 });
 
-const assignmentStatuses: AssignmentStatus[] = ["assigned", "started", "completed", "expired", "archived"];
+const assignmentStatuses: AssignmentStatus[] = [
+  "assigned",
+  "started",
+  "completed",
+  "expired",
+  "archived",
+];
 
 const initialForm = {
   test_id: "",
   assignee_id: "",
+  assignee_ids: [] as string[],
   due_at: "",
   max_attempts: "1",
   access_type: "token" as AssignmentAccessType,
   status: "assigned" as AssignmentStatus,
+  mode: "single" as "single" | "multiple",
 };
 
-const assignmentSchema = z.object({
-  test_id: z.string().trim().min(1, "Please select a test."),
-  assignee_id: z.string().trim().min(1, "Please select an assignee."),
-  due_at: z.string().trim().optional().nullable(),
-  max_attempts: z.coerce.number().int("Max attempts must be an integer.").min(1, "Max attempts must be at least 1."),
-  access_type: z.enum(["account", "token"]),
-  status: z.enum(["assigned", "started", "completed", "expired", "archived"]).optional(),
-});
+const assignmentSchema = z
+  .object({
+    test_id: z.string().trim().min(1, "Please select a test."),
+    mode: z.enum(["single", "multiple"]),
+    assignee_id: z.string().trim().optional(),
+    assignee_ids: z.array(z.string().trim().min(1)).default([]),
+    due_at: z.string().trim().optional().nullable(),
+    max_attempts: z.coerce
+      .number()
+      .int("Max attempts must be an integer.")
+      .min(1, "Max attempts must be at least 1."),
+    access_type: z.enum(["account", "token"]),
+    status: z.enum(["assigned", "started", "completed", "expired", "archived"]).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.mode === "single" && !value.assignee_id?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["assignee_id"],
+        message: "Please select an assignee.",
+      });
+    }
 
-type AssignmentFieldErrors = Partial<Record<"test_id" | "assignee_id" | "due_at" | "max_attempts" | "access_type" | "status", string>>;
+    if (value.mode === "multiple" && value.assignee_ids.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["assignee_ids"],
+        message: "Please select at least one assignee.",
+      });
+    }
+  });
+
+type AssignmentFieldErrors = Partial<
+  Record<
+    | "test_id"
+    | "assignee_id"
+    | "assignee_ids"
+    | "due_at"
+    | "max_attempts"
+    | "access_type"
+    | "status",
+    string
+  >
+>;
 
 function statusTone(status: AssignmentStatus) {
   switch (status) {
@@ -146,12 +194,23 @@ function getAssignedByLabel(assignment: Assignment) {
 }
 
 function buildPayload(form: typeof initialForm): AssignmentPayload {
-  return {
+  const base = {
     test_id: form.test_id.trim(),
-    assignee_id: form.assignee_id.trim(),
     due_at: formatDateTimeForApi(form.due_at),
     max_attempts: Number(form.max_attempts),
     access_type: form.access_type,
+  };
+
+  if (form.mode === "multiple") {
+    return {
+      ...base,
+      assignee_ids: form.assignee_ids.map((id) => id.trim()).filter(Boolean),
+    };
+  }
+
+  return {
+    ...base,
+    assignee_id: form.assignee_id.trim(),
   };
 }
 
@@ -194,7 +253,9 @@ function AssignmentDetailView({
 }) {
   const attempts = getAttemptSummaries(assignment);
   const latestAttempt = attempts[0] ?? null;
-  const score = latestAttempt?.total_score ?? getNumberField(assignment, ["total_score", "score", "final_score"]);
+  const score =
+    latestAttempt?.total_score ??
+    getNumberField(assignment, ["total_score", "score", "final_score"]);
   const isFinalized = latestAttempt?.is_finalized ?? getBooleanField(assignment, ["is_finalized"]);
   const isPassed = latestAttempt?.is_passed ?? getBooleanField(assignment, ["is_passed"]);
 
@@ -209,7 +270,9 @@ function AssignmentDetailView({
             <div className="min-w-0">
               <div className="text-xs uppercase tracking-wider text-muted-foreground">Test</div>
               <h3 className="mt-1 truncate text-base font-semibold">{getTestLabel(assignment)}</h3>
-              <div className="mt-1 font-mono text-[11px] text-muted-foreground">{assignment.test_id}</div>
+              <div className="mt-1 font-mono text-[11px] text-muted-foreground">
+                {assignment.test_id}
+              </div>
             </div>
           </div>
         </Card>
@@ -218,12 +281,18 @@ function AssignmentDetailView({
           <div className="text-xs uppercase tracking-wider text-muted-foreground">Result</div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-2xl font-semibold">{score == null ? "—" : score}</span>
-            <span className="text-xs text-muted-foreground">{isFinalized ? "finalized" : "not finalized"}</span>
+            <span className="text-xs text-muted-foreground">
+              {isFinalized ? "finalized" : "not finalized"}
+            </span>
           </div>
           {isPassed != null && (
             <Badge
               variant="outline"
-              className={isPassed ? "mt-2 border-success/30 bg-success/15 text-success" : "mt-2 border-destructive/30 bg-destructive/10 text-destructive"}
+              className={
+                isPassed
+                  ? "mt-2 border-success/30 bg-success/15 text-success"
+                  : "mt-2 border-destructive/30 bg-destructive/10 text-destructive"
+              }
             >
               {isPassed ? "Passed" : "Failed"}
             </Badge>
@@ -247,7 +316,14 @@ function AssignmentDetailView({
             <Key className="h-4 w-4 text-brand" />
             Access & lifecycle
           </div>
-          <DetailRow label="Status" value={<Badge variant="outline" className={statusTone(assignment.status)}>{assignment.status}</Badge>} />
+          <DetailRow
+            label="Status"
+            value={
+              <Badge variant="outline" className={statusTone(assignment.status)}>
+                {assignment.status}
+              </Badge>
+            }
+          />
           <DetailRow label="Due at" value={formatDateTimeForDisplay(assignment.due_at)} />
           <DetailRow label="Access type" value={assignment.access_type} />
           <DetailRow label="Max attempts" value={String(assignment.max_attempts)} />
@@ -295,7 +371,10 @@ function AssignmentDetailView({
 
       <div className="flex flex-wrap justify-end gap-2">
         {!canManageAssignments && assignment.status !== "completed" && (
-          <Button className="bg-brand text-brand-foreground hover:bg-brand/90" onClick={onStartAttempt}>
+          <Button
+            className="bg-brand text-brand-foreground hover:bg-brand/90"
+            onClick={onStartAttempt}
+          >
             <PlayCircle className="mr-1.5 h-4 w-4" />
             Start attempt
           </Button>
@@ -315,7 +394,15 @@ function AssignmentDetailView({
   );
 }
 
-function DetailRow({ label, value, mono = false }: { label: string; value: React.ReactNode; mono?: boolean }) {
+function DetailRow({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: React.ReactNode;
+  mono?: boolean;
+}) {
   return (
     <div className="grid grid-cols-[112px_1fr] gap-3 py-1.5 text-sm">
       <div className="text-muted-foreground">{label}</div>
@@ -365,7 +452,10 @@ function getAttemptSummaries(assignment: Assignment): AttemptSummary[] {
         id: String(item.id ?? item.attempt_id ?? ""),
         status: String(item.status ?? "unknown"),
         submitted_at: typeof item.submitted_at === "string" ? item.submitted_at : null,
-        total_score: typeof item.total_score === "number" ? item.total_score : getNumberField(item, ["score", "final_score"]),
+        total_score:
+          typeof item.total_score === "number"
+            ? item.total_score
+            : getNumberField(item, ["score", "final_score"]),
         auto_score: typeof item.auto_score === "number" ? item.auto_score : null,
         manual_score: typeof item.manual_score === "number" ? item.manual_score : null,
         is_passed: typeof item.is_passed === "boolean" ? item.is_passed : null,
@@ -399,6 +489,7 @@ function AssignmentsPage() {
   const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(null);
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
   const [createdToken, setCreatedToken] = useState<string | null>(null);
+  const [createdTokens, setCreatedTokens] = useState<Record<string, string> | null>(null);
   const [verifyToken, setVerifyToken] = useState("");
   const [verifyResult, setVerifyResult] = useState("");
   const [form, setForm] = useState(initialForm);
@@ -430,33 +521,38 @@ function AssignmentsPage() {
   const tests = testsQuery.data ?? [];
   const users = usersQuery.data ?? [];
 
-  async function loadAssignments(nextPage = page, nextAssigneeFilter = appliedAssigneeFilter) {
-    setIsLoading(true);
+  const loadAssignments = useCallback(
+    async (nextPage = page, nextAssigneeFilter = appliedAssigneeFilter) => {
+      setIsLoading(true);
 
-    try {
-      const result = canManageAssignments
-        ? await listAssignments({
-            page: nextPage,
-            per_page: 10,
-            assignee_id: nextAssigneeFilter,
-          })
-        : await listMyAssignments({ page: nextPage, per_page: 10 });
+      try {
+        const result = canManageAssignments
+          ? await listAssignments({
+              page: nextPage,
+              per_page: 10,
+              assignee_id: nextAssigneeFilter,
+            })
+          : await listMyAssignments({ page: nextPage, per_page: 10 });
 
-      setAssignments(result.assignments);
-      setPage(result.page);
-      setLastPage(result.lastPage);
-      setTotal(result.total);
-    } catch (error) {
-      toast.error(parseApiError(error).message);
-    } finally {
-      setIsLoading(false);
-    }
-  }
+        setAssignments(result.assignments);
+        setPage(result.page);
+        setLastPage(result.lastPage);
+        setTotal(result.total);
+      } catch (error) {
+        toast.error(parseApiError(error).message);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [appliedAssigneeFilter, canManageAssignments, page],
+  );
 
   function validateAssignmentForm() {
     const parsed = assignmentSchema.safeParse({
       test_id: form.test_id,
+      mode: form.mode,
       assignee_id: form.assignee_id,
+      assignee_ids: form.assignee_ids,
       due_at: form.due_at || null,
       max_attempts: form.max_attempts,
       access_type: form.access_type,
@@ -474,11 +570,12 @@ function AssignmentsPage() {
 
   useEffect(() => {
     void loadAssignments(1, "");
-  }, [canManageAssignments]);
+  }, [loadAssignments]);
 
   function openCreateDialog() {
     setEditingAssignment(null);
     setCreatedToken(null);
+    setCreatedTokens(null);
     setForm(initialForm);
     setFormErrors({});
     setFormOpen(true);
@@ -487,13 +584,16 @@ function AssignmentsPage() {
   function openEditDialog(assignment: Assignment) {
     setEditingAssignment(assignment);
     setCreatedToken(null);
+    setCreatedTokens(null);
     setForm({
       test_id: assignment.test_id,
       assignee_id: assignment.assignee_id,
+      assignee_ids: [],
       due_at: formatDateTimeForInput(assignment.due_at),
       max_attempts: String(assignment.max_attempts),
       access_type: assignment.access_type,
       status: assignment.status,
+      mode: "single",
     });
     setFormErrors({});
     setFormOpen(true);
@@ -520,8 +620,15 @@ function AssignmentsPage() {
         setFormOpen(false);
       } else {
         const result = await createAssignment(payload);
-        setCreatedToken(result.access_token);
-        toast.success("Assignment created successfully.");
+        setCreatedToken(result.access_token ?? result.access_tokens[form.assignee_id] ?? null);
+        setCreatedTokens(
+          Object.keys(result.access_tokens).length > 0 ? result.access_tokens : null,
+        );
+        if (result.assignments.length > 1) {
+          toast.success(`Created ${result.assignments.length} assignments successfully.`);
+        } else {
+          toast.success("Assignment created successfully.");
+        }
       }
 
       await loadAssignments(page, appliedAssigneeFilter);
@@ -561,7 +668,9 @@ function AssignmentsPage() {
     try {
       const attempt = await startAssignmentAttempt(assignment.id);
       const attemptId =
-        attempt && typeof attempt === "object" && "id" in attempt ? String((attempt as { id: unknown }).id) : "";
+        attempt && typeof attempt === "object" && "id" in attempt
+          ? String((attempt as { id: unknown }).id)
+          : "";
 
       toast.success("Attempt started.");
       navigate({ to: "/exam", search: attemptId ? ({ attemptId } as never) : undefined });
@@ -607,6 +716,8 @@ function AssignmentsPage() {
 
   const selectedTest = tests.find((test) => test.id === form.test_id);
   const selectedAssignee = users.find((user) => user.id === form.assignee_id);
+  const selectedAssignees =
+    form.mode === "multiple" ? users.filter((user) => form.assignee_ids.includes(user.id)) : [];
 
   return (
     <AppLayout
@@ -623,15 +734,27 @@ function AssignmentsPage() {
             <Button variant="outline" size="sm" onClick={() => setVerifyOpen(true)}>
               <Key className="mr-1.5 h-4 w-4" /> Verify token
             </Button>
-            <Button variant="outline" size="sm" onClick={() => loadAssignments(page, appliedAssigneeFilter)}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => loadAssignments(page, appliedAssigneeFilter)}
+            >
               <RefreshCw className="mr-1.5 h-4 w-4" /> Refresh
             </Button>
-            <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90" onClick={openCreateDialog}>
+            <Button
+              size="sm"
+              className="bg-brand text-brand-foreground hover:bg-brand/90"
+              onClick={openCreateDialog}
+            >
               <Plus className="mr-1.5 h-4 w-4" /> Assign test
             </Button>
           </>
         ) : (
-          <Button variant="outline" size="sm" onClick={() => loadAssignments(page, appliedAssigneeFilter)}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => loadAssignments(page, appliedAssigneeFilter)}
+          >
             <RefreshCw className="mr-1.5 h-4 w-4" /> Refresh
           </Button>
         )
@@ -648,7 +771,10 @@ function AssignmentsPage() {
 
       <Card className="overflow-hidden">
         {canManageAssignments && (
-          <form className="flex flex-wrap items-center gap-2 border-b p-3" onSubmit={applyAssigneeFilter}>
+          <form
+            className="flex flex-wrap items-center gap-2 border-b p-3"
+            onSubmit={applyAssigneeFilter}
+          >
             <div className="relative min-w-[260px] flex-1 max-w-md">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -710,7 +836,9 @@ function AssignmentsPage() {
                   <tr key={assignment.id} className="hover:bg-muted/30">
                     <td className="px-4 py-3">
                       <div className="font-medium">{getTestLabel(assignment)}</div>
-                      <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">{assignment.test_id}</div>
+                      <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                        {assignment.test_id}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div>{getAssigneeLabel(assignment)}</div>
@@ -830,6 +958,52 @@ function AssignmentsPage() {
 
           <form className="grid gap-4" onSubmit={handleSubmit}>
             <div className="grid gap-2">
+              <Label>Assignment mode</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={form.mode === "single" ? "default" : "outline"}
+                  className={
+                    form.mode === "single" ? "bg-brand text-brand-foreground hover:bg-brand/90" : ""
+                  }
+                  onClick={() => {
+                    setForm((current) => ({ ...current, mode: "single", assignee_ids: [] }));
+                    setFormErrors((current) => ({
+                      ...current,
+                      assignee_id: undefined,
+                      assignee_ids: undefined,
+                    }));
+                  }}
+                >
+                  One student
+                </Button>
+                <Button
+                  type="button"
+                  variant={form.mode === "multiple" ? "default" : "outline"}
+                  className={
+                    form.mode === "multiple"
+                      ? "bg-brand text-brand-foreground hover:bg-brand/90"
+                      : ""
+                  }
+                  onClick={() => {
+                    setForm((current) => ({ ...current, mode: "multiple", assignee_id: "" }));
+                    setFormErrors((current) => ({
+                      ...current,
+                      assignee_id: undefined,
+                      assignee_ids: undefined,
+                    }));
+                  }}
+                >
+                  Multiple students
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Chọn một học sinh để dùng `assignee_id`, hoặc chọn nhiều học sinh để gửi
+                `assignee_ids[]`.
+              </p>
+            </div>
+
+            <div className="grid gap-2">
               <Label htmlFor="test_id">Test</Label>
               <Select
                 value={form.test_id}
@@ -838,7 +1012,10 @@ function AssignmentsPage() {
                   setFormErrors((current) => ({ ...current, test_id: undefined }));
                 }}
               >
-                <SelectTrigger id="test_id" className={formErrors.test_id ? "border-destructive focus:ring-destructive" : ""}>
+                <SelectTrigger
+                  id="test_id"
+                  className={formErrors.test_id ? "border-destructive focus:ring-destructive" : ""}
+                >
                   <SelectValue placeholder="Select a published test" />
                 </SelectTrigger>
                 <SelectContent>
@@ -849,34 +1026,81 @@ function AssignmentsPage() {
                   ))}
                 </SelectContent>
               </Select>
-              {formErrors.test_id && <p className="text-xs text-destructive">{formErrors.test_id}</p>}
+              {formErrors.test_id && (
+                <p className="text-xs text-destructive">{formErrors.test_id}</p>
+              )}
             </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="assignee_id">Assignee</Label>
-              <Select
-                value={form.assignee_id}
-                onValueChange={(value) => {
-                  setForm((current) => ({ ...current, assignee_id: value }));
-                  setFormErrors((current) => ({ ...current, assignee_id: undefined }));
-                }}
-              >
-                <SelectTrigger
-                  id="assignee_id"
-                  className={formErrors.assignee_id ? "border-destructive focus:ring-destructive" : ""}
+            {form.mode === "single" ? (
+              <div className="grid gap-2">
+                <Label htmlFor="assignee_id">Assignee</Label>
+                <Select
+                  value={form.assignee_id}
+                  onValueChange={(value) => {
+                    setForm((current) => ({ ...current, assignee_id: value }));
+                    setFormErrors((current) => ({ ...current, assignee_id: undefined }));
+                  }}
                 >
-                  <SelectValue placeholder="Select a user" />
-                </SelectTrigger>
-                <SelectContent>
-                  {users.map((user: UserResource) => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.display_name} · {user.email}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {formErrors.assignee_id && <p className="text-xs text-destructive">{formErrors.assignee_id}</p>}
-            </div>
+                  <SelectTrigger
+                    id="assignee_id"
+                    className={
+                      formErrors.assignee_id ? "border-destructive focus:ring-destructive" : ""
+                    }
+                  >
+                    <SelectValue placeholder="Select a user" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {users.map((user: UserResource) => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.display_name} · {user.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {formErrors.assignee_id && (
+                  <p className="text-xs text-destructive">{formErrors.assignee_id}</p>
+                )}
+              </div>
+            ) : (
+              <div className="grid gap-2">
+                <Label>Assignees</Label>
+                <div className="max-h-64 overflow-auto rounded-md border p-3">
+                  <div className="grid gap-2">
+                    {users.map((user: UserResource) => {
+                      const checked = form.assignee_ids.includes(user.id);
+                      return (
+                        <label
+                          key={user.id}
+                          className="flex cursor-pointer items-start gap-3 rounded-md border bg-background px-3 py-2 text-sm hover:bg-muted/30"
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-1 h-4 w-4"
+                            checked={checked}
+                            onChange={(event) => {
+                              const nextIds = event.target.checked
+                                ? [...form.assignee_ids, user.id]
+                                : form.assignee_ids.filter((id) => id !== user.id);
+                              setForm((current) => ({ ...current, assignee_ids: nextIds }));
+                              setFormErrors((current) => ({ ...current, assignee_ids: undefined }));
+                            }}
+                          />
+                          <span className="min-w-0">
+                            <span className="block font-medium">{user.display_name}</span>
+                            <span className="block text-xs text-muted-foreground">
+                              {user.email}
+                            </span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+                {formErrors.assignee_ids && (
+                  <p className="text-xs text-destructive">{formErrors.assignee_ids}</p>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
@@ -889,9 +1113,13 @@ function AssignmentsPage() {
                     setForm((current) => ({ ...current, due_at: event.target.value }));
                     setFormErrors((current) => ({ ...current, due_at: undefined }));
                   }}
-                  className={formErrors.due_at ? "border-destructive focus-visible:ring-destructive" : ""}
+                  className={
+                    formErrors.due_at ? "border-destructive focus-visible:ring-destructive" : ""
+                  }
                 />
-                {formErrors.due_at && <p className="text-xs text-destructive">{formErrors.due_at}</p>}
+                {formErrors.due_at && (
+                  <p className="text-xs text-destructive">{formErrors.due_at}</p>
+                )}
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="max_attempts">Max attempts</Label>
@@ -905,9 +1133,15 @@ function AssignmentsPage() {
                     setFormErrors((current) => ({ ...current, max_attempts: undefined }));
                   }}
                   required
-                  className={formErrors.max_attempts ? "border-destructive focus-visible:ring-destructive" : ""}
+                  className={
+                    formErrors.max_attempts
+                      ? "border-destructive focus-visible:ring-destructive"
+                      : ""
+                  }
                 />
-                {formErrors.max_attempts && <p className="text-xs text-destructive">{formErrors.max_attempts}</p>}
+                {formErrors.max_attempts && (
+                  <p className="text-xs text-destructive">{formErrors.max_attempts}</p>
+                )}
               </div>
             </div>
 
@@ -916,11 +1150,18 @@ function AssignmentsPage() {
               <Select
                 value={form.access_type}
                 onValueChange={(value) => {
-                  setForm((current) => ({ ...current, access_type: value as AssignmentAccessType }));
+                  setForm((current) => ({
+                    ...current,
+                    access_type: value as AssignmentAccessType,
+                  }));
                   setFormErrors((current) => ({ ...current, access_type: undefined }));
                 }}
               >
-                <SelectTrigger className={formErrors.access_type ? "border-destructive focus:ring-destructive" : ""}>
+                <SelectTrigger
+                  className={
+                    formErrors.access_type ? "border-destructive focus:ring-destructive" : ""
+                  }
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -928,7 +1169,9 @@ function AssignmentsPage() {
                   <SelectItem value="account">account</SelectItem>
                 </SelectContent>
               </Select>
-              {formErrors.access_type && <p className="text-xs text-destructive">{formErrors.access_type}</p>}
+              {formErrors.access_type && (
+                <p className="text-xs text-destructive">{formErrors.access_type}</p>
+              )}
             </div>
 
             {editingAssignment && (
@@ -941,7 +1184,9 @@ function AssignmentsPage() {
                     setFormErrors((current) => ({ ...current, status: undefined }));
                   }}
                 >
-                  <SelectTrigger className={formErrors.status ? "border-destructive focus:ring-destructive" : ""}>
+                  <SelectTrigger
+                    className={formErrors.status ? "border-destructive focus:ring-destructive" : ""}
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -952,44 +1197,91 @@ function AssignmentsPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                {formErrors.status && <p className="text-xs text-destructive">{formErrors.status}</p>}
+                {formErrors.status && (
+                  <p className="text-xs text-destructive">{formErrors.status}</p>
+                )}
               </div>
             )}
 
-            {createdToken && form.access_type === "token" && (
+            {(createdToken || createdTokens) && form.access_type === "token" && (
               <div className="rounded-md border bg-muted/40 p-3">
                 <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   Access token
                 </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <code className="min-w-0 flex-1 rounded bg-background px-2 py-1 text-xs">{createdToken}</code>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => {
-                      void navigator.clipboard.writeText(createdToken);
-                      toast.success("Token copied.");
-                    }}
-                  >
-                    <Clipboard className="h-4 w-4" />
-                  </Button>
-                </div>
+                {createdTokens ? (
+                  <div className="mt-2 grid gap-2">
+                    {Object.entries(createdTokens).map(([assigneeId, token]) => (
+                      <div key={assigneeId} className="flex items-center gap-2">
+                        <code className="min-w-0 flex-1 rounded bg-background px-2 py-1 text-xs">
+                          {token}
+                        </code>
+                        <span className="text-[11px] text-muted-foreground">{assigneeId}</span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => {
+                            void navigator.clipboard.writeText(token);
+                            toast.success("Token copied.");
+                          }}
+                        >
+                          <Clipboard className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-2 flex items-center gap-2">
+                    <code className="min-w-0 flex-1 rounded bg-background px-2 py-1 text-xs">
+                      {createdToken}
+                    </code>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(createdToken ?? "");
+                        toast.success("Token copied.");
+                      }}
+                    >
+                      <Clipboard className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
 
             <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
               <div className="font-medium text-foreground">Selected values</div>
               <div className="mt-1">Test: {selectedTest?.title ?? "—"}</div>
-              <div>Assignee: {selectedAssignee ? `${selectedAssignee.display_name} (${selectedAssignee.email})` : "—"}</div>
+              {form.mode === "single" ? (
+                <div>
+                  Assignee:{" "}
+                  {selectedAssignee
+                    ? `${selectedAssignee.display_name} (${selectedAssignee.email})`
+                    : "—"}
+                </div>
+              ) : (
+                <div>
+                  Assignees:{" "}
+                  {selectedAssignees.length > 0
+                    ? selectedAssignees.map((user) => user.display_name).join(", ")
+                    : "—"}
+                </div>
+              )}
             </div>
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setFormOpen(false)}>
                 Close
               </Button>
-              <Button type="submit" disabled={isSaving} className="bg-brand text-brand-foreground hover:bg-brand/90">
+              <Button
+                type="submit"
+                disabled={isSaving}
+                className="bg-brand text-brand-foreground hover:bg-brand/90"
+              >
                 {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
                 {editingAssignment ? "Save changes" : "Create assignment"}
               </Button>
@@ -1002,7 +1294,9 @@ function AssignmentsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Verify access token</DialogTitle>
-            <DialogDescription>Check whether an assignment access token is valid.</DialogDescription>
+            <DialogDescription>
+              Check whether an assignment access token is valid.
+            </DialogDescription>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={handleVerify}>
             <div className="grid gap-2">
@@ -1015,12 +1309,18 @@ function AssignmentsPage() {
                 required
               />
             </div>
-            {verifyResult && <Textarea value={verifyResult} readOnly className="min-h-40 font-mono text-xs" />}
+            {verifyResult && (
+              <Textarea value={verifyResult} readOnly className="min-h-40 font-mono text-xs" />
+            )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setVerifyOpen(false)}>
                 Close
               </Button>
-              <Button type="submit" disabled={isVerifying} className="bg-brand text-brand-foreground hover:bg-brand/90">
+              <Button
+                type="submit"
+                disabled={isVerifying}
+                className="bg-brand text-brand-foreground hover:bg-brand/90"
+              >
                 {isVerifying && <Loader2 className="h-4 w-4 animate-spin" />}
                 Verify
               </Button>
@@ -1033,7 +1333,9 @@ function AssignmentsPage() {
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>Assignment details</DialogTitle>
-            <DialogDescription>Test, assignee, lifecycle, and available scoring information.</DialogDescription>
+            <DialogDescription>
+              Test, assignee, lifecycle, and available scoring information.
+            </DialogDescription>
           </DialogHeader>
           {selectedAssignment ? (
             <AssignmentDetailView

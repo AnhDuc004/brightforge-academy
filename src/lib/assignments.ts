@@ -40,7 +40,8 @@ export type Assignment = {
 
 export type AssignmentPayload = {
   test_id: string;
-  assignee_id: string;
+  assignee_id?: string;
+  assignee_ids?: string[];
   due_at?: string | null;
   max_attempts: number;
   access_type: AssignmentAccessType;
@@ -67,8 +68,10 @@ export type AssignmentListResult = {
 };
 
 export type AssignmentCreateResult = {
-  assignment: Assignment;
+  assignment: Assignment | null;
+  assignments: Assignment[];
   access_token: string | null;
+  access_tokens: Record<string, string>;
 };
 
 function asRecord(value: unknown) {
@@ -89,21 +92,41 @@ function normalizeAssignmentResource(value: unknown): Assignment {
     test_id: String(record.test_id ?? ""),
     assignee_id: String(record.assignee_id ?? record.user_id ?? ""),
     user_id: typeof record.user_id === "string" ? record.user_id : undefined,
-    due_at: typeof record.due_at === "string" ? record.due_at : typeof record.due_date === "string" ? record.due_date : null,
-    due_date: typeof record.due_date === "string" ? record.due_date : typeof record.due_at === "string" ? record.due_at : null,
+    due_at:
+      typeof record.due_at === "string"
+        ? record.due_at
+        : typeof record.due_date === "string"
+          ? record.due_date
+          : null,
+    due_date:
+      typeof record.due_date === "string"
+        ? record.due_date
+        : typeof record.due_at === "string"
+          ? record.due_at
+          : null,
     access_type: record.access_type === "account" ? "account" : "token",
     access_token: typeof record.access_token === "string" ? record.access_token : null,
     max_attempts: Number(record.max_attempts ?? 1),
-    current_attempts: typeof record.current_attempts === "number" ? record.current_attempts : undefined,
+    current_attempts:
+      typeof record.current_attempts === "number" ? record.current_attempts : undefined,
     status: (record.status as AssignmentStatus) ?? "assigned",
     created_at: typeof record.created_at === "string" ? record.created_at : null,
     updated_at: typeof record.updated_at === "string" ? record.updated_at : null,
     assignee:
       record.assignee && typeof record.assignee === "object"
         ? {
-            id: typeof asRecord(record.assignee).id === "string" ? String(asRecord(record.assignee).id) : undefined,
-            email: typeof asRecord(record.assignee).email === "string" ? String(asRecord(record.assignee).email) : undefined,
-            name: typeof asRecord(record.assignee).name === "string" ? String(asRecord(record.assignee).name) : undefined,
+            id:
+              typeof asRecord(record.assignee).id === "string"
+                ? String(asRecord(record.assignee).id)
+                : undefined,
+            email:
+              typeof asRecord(record.assignee).email === "string"
+                ? String(asRecord(record.assignee).email)
+                : undefined,
+            name:
+              typeof asRecord(record.assignee).name === "string"
+                ? String(asRecord(record.assignee).name)
+                : undefined,
             display_name:
               typeof asRecord(record.assignee).display_name === "string"
                 ? String(asRecord(record.assignee).display_name)
@@ -113,9 +136,18 @@ function normalizeAssignmentResource(value: unknown): Assignment {
     assigned_by_user:
       record.assigned_by_user && typeof record.assigned_by_user === "object"
         ? {
-            id: typeof asRecord(record.assigned_by_user).id === "string" ? String(asRecord(record.assigned_by_user).id) : undefined,
-            email: typeof asRecord(record.assigned_by_user).email === "string" ? String(asRecord(record.assigned_by_user).email) : undefined,
-            name: typeof asRecord(record.assigned_by_user).name === "string" ? String(asRecord(record.assigned_by_user).name) : undefined,
+            id:
+              typeof asRecord(record.assigned_by_user).id === "string"
+                ? String(asRecord(record.assigned_by_user).id)
+                : undefined,
+            email:
+              typeof asRecord(record.assigned_by_user).email === "string"
+                ? String(asRecord(record.assigned_by_user).email)
+                : undefined,
+            name:
+              typeof asRecord(record.assigned_by_user).name === "string"
+                ? String(asRecord(record.assigned_by_user).name)
+                : undefined,
             display_name:
               typeof asRecord(record.assigned_by_user).display_name === "string"
                 ? String(asRecord(record.assigned_by_user).display_name)
@@ -125,15 +157,27 @@ function normalizeAssignmentResource(value: unknown): Assignment {
     test:
       record.test && typeof record.test === "object"
         ? {
-            id: typeof asRecord(record.test).id === "string" ? String(asRecord(record.test).id) : undefined,
-            title: typeof asRecord(record.test).title === "string" ? String(asRecord(record.test).title) : undefined,
-            name: typeof asRecord(record.test).name === "string" ? String(asRecord(record.test).name) : undefined,
+            id:
+              typeof asRecord(record.test).id === "string"
+                ? String(asRecord(record.test).id)
+                : undefined,
+            title:
+              typeof asRecord(record.test).title === "string"
+                ? String(asRecord(record.test).title)
+                : undefined,
+            name:
+              typeof asRecord(record.test).name === "string"
+                ? String(asRecord(record.test).name)
+                : undefined,
           }
         : null,
   };
 }
 
-function normalizeList(payload: unknown, fallback: Required<Pick<AssignmentListParams, "page" | "per_page">>): AssignmentListResult {
+function normalizeList(
+  payload: unknown,
+  fallback: Required<Pick<AssignmentListParams, "page" | "per_page">>,
+): AssignmentListResult {
   const data = unwrapData(payload);
   const record = asRecord(data);
 
@@ -144,11 +188,15 @@ function normalizeList(payload: unknown, fallback: Required<Pick<AssignmentListP
     (Array.isArray(nestedAssignments.data) && nestedAssignments.data) ||
     [];
 
-  const meta = asRecord(record.meta ?? record.pagination ?? nestedAssignments.meta ?? nestedAssignments);
+  const meta = asRecord(
+    record.meta ?? record.pagination ?? nestedAssignments.meta ?? nestedAssignments,
+  );
   const total = Number(meta.total ?? record.total ?? items.length);
   const page = Number(meta.current_page ?? meta.page ?? record.current_page ?? fallback.page);
   const perPage = Number(meta.per_page ?? meta.perPage ?? record.per_page ?? fallback.per_page);
-  const lastPage = Number(meta.last_page ?? meta.lastPage ?? record.last_page ?? Math.max(1, Math.ceil(total / perPage)));
+  const lastPage = Number(
+    meta.last_page ?? meta.lastPage ?? record.last_page ?? Math.max(1, Math.ceil(total / perPage)),
+  );
 
   return {
     assignments: items.map(normalizeAssignmentResource),
@@ -168,10 +216,23 @@ function normalizeAssignment(payload: unknown) {
 function normalizeCreate(payload: unknown): AssignmentCreateResult {
   const data = unwrapData(payload);
   const record = asRecord(data);
+  const assignments =
+    (Array.isArray(record.assignments) && record.assignments.map(normalizeAssignmentResource)) ||
+    (record.assignment ? [normalizeAssignmentResource(record.assignment)] : []);
+  const assignment = record.assignment
+    ? normalizeAssignmentResource(record.assignment)
+    : (assignments[0] ?? null);
+  const accessTokensRecord = asRecord(record.access_tokens);
 
   return {
-    assignment: normalizeAssignmentResource(record.assignment ?? data),
+    assignment,
+    assignments,
     access_token: typeof record.access_token === "string" ? record.access_token : null,
+    access_tokens: Object.fromEntries(
+      Object.entries(accessTokensRecord).flatMap(([key, value]) =>
+        typeof value === "string" ? [[key, value]] : [],
+      ),
+    ),
   };
 }
 
@@ -191,7 +252,9 @@ export async function listAssignments(params: AssignmentListParams = {}) {
   return normalizeList(response.data, { page, per_page });
 }
 
-export async function listMyAssignments(params: Pick<AssignmentListParams, "page" | "per_page"> = {}) {
+export async function listMyAssignments(
+  params: Pick<AssignmentListParams, "page" | "per_page"> = {},
+) {
   const page = params.page ?? 1;
   const per_page = params.per_page ?? 10;
 
