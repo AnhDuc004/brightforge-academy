@@ -286,7 +286,7 @@ export async function deleteAssignment(id: string) {
 
 export async function verifyAssignmentToken(access_token: string) {
   const response = await api.post("/v1/assignments/verify-token", { access_token });
-  return response.data;
+  return normalizeAssignment(response.data);
 }
 
 export async function startAssignmentAttempt(assignmentId: string) {

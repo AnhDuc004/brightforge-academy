@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -22,7 +22,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
-import { getAttempt, flattenAttemptQuestions, saveAttemptAnswer, submitAttempt } from "@/lib/attempts";
+import {
+  flattenAttemptQuestions,
+  heartbeatAttempt,
+  resumeAttempt,
+  saveAttemptAnswer,
+  submitAttempt,
+} from "@/lib/attempts";
 import { parseApiError } from "@/lib/auth";
 
 export const Route = createFileRoute("/exam")({
@@ -46,7 +52,7 @@ function ExamPage() {
 
   const attemptQuery = useQuery({
     queryKey: ["attempt", attemptId],
-    queryFn: () => getAttempt(attemptId ?? ""),
+    queryFn: () => resumeAttempt(attemptId ?? ""),
     enabled: Boolean(attemptId),
     retry: false,
   });
@@ -110,6 +116,21 @@ function ExamPage() {
     },
   });
 
+  const syncHeartbeat = useEffectEvent(async () => {
+    if (!attemptId) return;
+
+    try {
+      const nextAttempt = await heartbeatAttempt(attemptId);
+      queryClient.setQueryData(["attempt", attemptId], nextAttempt);
+    } catch (error) {
+      const { message } = parseApiError(error);
+
+      if (!/unauthenticated|forbidden/i.test(message)) {
+        console.warn("[attempt-heartbeat]", message);
+      }
+    }
+  });
+
   useEffect(() => {
     if (
       attempt?.status === "in_progress" &&
@@ -120,6 +141,18 @@ function ExamPage() {
       submitMutation.mutate();
     }
   }, [attempt?.expires_at, attempt?.status, secondsLeft]);
+
+  useEffect(() => {
+    if (!attemptId || attempt?.status !== "in_progress") {
+      return;
+    }
+
+    const heartbeatTimer = window.setInterval(() => {
+      void syncHeartbeat();
+    }, 30000);
+
+    return () => window.clearInterval(heartbeatTimer);
+  }, [attemptId, attempt?.status, syncHeartbeat]);
 
   function updateAnswer(questionId: string, value: AnswerValue, saveNow = true) {
     setAnswers((current) => ({ ...current, [questionId]: value }));

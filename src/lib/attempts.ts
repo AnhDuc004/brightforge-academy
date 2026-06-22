@@ -53,6 +53,8 @@ export type AttemptResource = {
   submitted_at: string | null;
   expires_at: string | null;
   status: AttemptStatus;
+  server_time?: string | null;
+  remaining_seconds?: number | null;
   assignment?: unknown;
   test: {
     id?: string;
@@ -143,18 +145,21 @@ function normalizeAnswer(value: unknown): AttemptAnswer {
 export function normalizeAttempt(payload: unknown): AttemptResource {
   const data = unwrapData(payload);
   const record = asRecord(data);
-  const test = asRecord(record.test);
+  const attemptRecord = asRecord(record.attempt ?? data);
+  const test = asRecord(attemptRecord.test);
 
   return {
-    id: String(record.id ?? ""),
-    assignment_id: String(record.assignment_id ?? ""),
-    assignee_id: String(record.assignee_id ?? ""),
-    started_at: typeof record.started_at === "string" ? record.started_at : null,
-    submitted_at: typeof record.submitted_at === "string" ? record.submitted_at : null,
-    expires_at: typeof record.expires_at === "string" ? record.expires_at : null,
-    status: (record.status as AttemptStatus) ?? "in_progress",
-    assignment: record.assignment,
-    test: record.test
+    id: String(attemptRecord.id ?? ""),
+    assignment_id: String(attemptRecord.assignment_id ?? ""),
+    assignee_id: String(attemptRecord.assignee_id ?? ""),
+    started_at: typeof attemptRecord.started_at === "string" ? attemptRecord.started_at : null,
+    submitted_at: typeof attemptRecord.submitted_at === "string" ? attemptRecord.submitted_at : null,
+    expires_at: typeof attemptRecord.expires_at === "string" ? attemptRecord.expires_at : null,
+    status: (attemptRecord.status as AttemptStatus) ?? "in_progress",
+    server_time: typeof record.server_time === "string" ? record.server_time : null,
+    remaining_seconds: typeof record.remaining_seconds === "number" ? record.remaining_seconds : null,
+    assignment: attemptRecord.assignment,
+    test: attemptRecord.test
       ? {
           id: typeof test.id === "string" ? test.id : undefined,
           title: String(test.title ?? "Exam"),
@@ -164,7 +169,7 @@ export function normalizeAttempt(payload: unknown): AttemptResource {
             : [],
         }
       : null,
-    answers: Array.isArray(record.answers) ? record.answers.map(normalizeAnswer) : [],
+    answers: Array.isArray(attemptRecord.answers) ? attemptRecord.answers.map(normalizeAnswer) : [],
   };
 }
 
@@ -179,6 +184,16 @@ export function flattenAttemptQuestions(attempt: AttemptResource | null | undefi
 
 export async function getAttempt(id: string) {
   const response = await api.get(`/v1/attempts/${id}`);
+  return normalizeAttempt(response.data);
+}
+
+export async function resumeAttempt(id: string) {
+  const response = await api.post(`/v1/attempts/${id}/resume`);
+  return normalizeAttempt(response.data);
+}
+
+export async function heartbeatAttempt(id: string) {
+  const response = await api.post(`/v1/attempts/${id}/heartbeat`);
   return normalizeAttempt(response.data);
 }
 

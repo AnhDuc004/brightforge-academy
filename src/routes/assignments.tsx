@@ -155,6 +155,14 @@ function statusTone(status: AssignmentStatus) {
   }
 }
 
+function canLaunchAssignment(assignment: Assignment) {
+  return assignment.status === "assigned" || assignment.status === "started";
+}
+
+function getAttemptActionLabel(assignment: Assignment) {
+  return assignment.status === "started" ? "Continue attempt" : "Start attempt";
+}
+
 function formatDateTimeForInput(value?: string | null) {
   if (!value) return "";
   return value.replace(" ", "T").slice(0, 16);
@@ -258,6 +266,8 @@ function AssignmentDetailView({
     getNumberField(assignment, ["total_score", "score", "final_score"]);
   const isFinalized = latestAttempt?.is_finalized ?? getBooleanField(assignment, ["is_finalized"]);
   const isPassed = latestAttempt?.is_passed ?? getBooleanField(assignment, ["is_passed"]);
+  const canLaunch = canLaunchAssignment(assignment);
+  const attemptActionLabel = getAttemptActionLabel(assignment);
 
   return (
     <div className="space-y-4">
@@ -370,13 +380,13 @@ function AssignmentDetailView({
       </Card>
 
       <div className="flex flex-wrap justify-end gap-2">
-        {!canManageAssignments && assignment.status !== "completed" && (
+        {!canManageAssignments && canLaunch && (
           <Button
             className="bg-brand text-brand-foreground hover:bg-brand/90"
             onClick={onStartAttempt}
           >
             <PlayCircle className="mr-1.5 h-4 w-4" />
-            Start attempt
+            {attemptActionLabel}
           </Button>
         )}
         {canReview && (
@@ -492,6 +502,7 @@ function AssignmentsPage() {
   const [createdTokens, setCreatedTokens] = useState<Record<string, string> | null>(null);
   const [verifyToken, setVerifyToken] = useState("");
   const [verifyResult, setVerifyResult] = useState("");
+  const [verifiedAssignment, setVerifiedAssignment] = useState<Assignment | null>(null);
   const [form, setForm] = useState(initialForm);
   const [formErrors, setFormErrors] = useState<AssignmentFieldErrors>({});
 
@@ -672,7 +683,8 @@ function AssignmentsPage() {
           ? String((attempt as { id: unknown }).id)
           : "";
 
-      toast.success("Attempt started.");
+      toast.success(assignment.status === "started" ? "Attempt resumed." : "Attempt started.");
+      await loadAssignments(page, appliedAssigneeFilter);
       navigate({ to: "/exam", search: attemptId ? ({ attemptId } as never) : undefined });
     } catch (error) {
       toast.error(parseApiError(error).message);
@@ -696,10 +708,26 @@ function AssignmentsPage() {
     event.preventDefault();
     setIsVerifying(true);
     setVerifyResult("");
+    setVerifiedAssignment(null);
 
     try {
       const result = await verifyAssignmentToken(verifyToken.trim());
-      setVerifyResult(JSON.stringify(result, null, 2));
+      setVerifiedAssignment(result);
+      setVerifyResult(
+        JSON.stringify(
+          {
+            id: result.id,
+            status: result.status,
+            test: getTestLabel(result),
+            assignee: getAssigneeLabel(result),
+            due_at: result.due_at,
+            access_type: result.access_type,
+            max_attempts: result.max_attempts,
+          },
+          null,
+          2,
+        ),
+      );
       toast.success("Access token verified.");
     } catch (error) {
       toast.error(parseApiError(error).message);
@@ -726,7 +754,7 @@ function AssignmentsPage() {
       description={
         canManageAssignments
           ? "Distribute published tests to students, manage lifecycle status, and verify assignment access tokens."
-          : "Open assigned tests and continue your in-progress attempts."
+          : "Open assigned tests, continue in-progress attempts, or verify a token-based assignment."
       }
       actions={
         canManageAssignments ? (
@@ -750,13 +778,18 @@ function AssignmentsPage() {
             </Button>
           </>
         ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => loadAssignments(page, appliedAssigneeFilter)}
-          >
-            <RefreshCw className="mr-1.5 h-4 w-4" /> Refresh
-          </Button>
+          <>
+            <Button variant="outline" size="sm" onClick={() => setVerifyOpen(true)}>
+              <Key className="mr-1.5 h-4 w-4" /> Verify token
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => loadAssignments(page, appliedAssigneeFilter)}
+            >
+              <RefreshCw className="mr-1.5 h-4 w-4" /> Refresh
+            </Button>
+          </>
         )
       }
     >
@@ -873,9 +906,9 @@ function AssignmentsPage() {
                           <DropdownMenuItem onClick={() => void handleView(assignment)}>
                             <Eye className="h-4 w-4" /> View details
                           </DropdownMenuItem>
-                          {!canManageAssignments && (
+                          {!canManageAssignments && canLaunchAssignment(assignment) && (
                             <DropdownMenuItem onClick={() => void handleStartAttempt(assignment)}>
-                              <PlayCircle className="h-4 w-4" /> Start attempt
+                              <PlayCircle className="h-4 w-4" /> {getAttemptActionLabel(assignment)}
                             </DropdownMenuItem>
                           )}
                           {canManageAssignments && (
@@ -1295,7 +1328,7 @@ function AssignmentsPage() {
           <DialogHeader>
             <DialogTitle>Verify access token</DialogTitle>
             <DialogDescription>
-              Check whether an assignment access token is valid.
+              Check whether an assignment access token is valid and preview the linked assignment.
             </DialogDescription>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={handleVerify}>
@@ -1312,10 +1345,35 @@ function AssignmentsPage() {
             {verifyResult && (
               <Textarea value={verifyResult} readOnly className="min-h-40 font-mono text-xs" />
             )}
+            {verifiedAssignment && (
+              <div className="rounded-md border bg-muted/20 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold">{getTestLabel(verifiedAssignment)}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {getAssigneeLabel(verifiedAssignment)} · {formatDateTimeForDisplay(verifiedAssignment.due_at)}
+                    </div>
+                  </div>
+                  <Badge variant="outline" className={statusTone(verifiedAssignment.status)}>
+                    {verifiedAssignment.status}
+                  </Badge>
+                </div>
+              </div>
+            )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setVerifyOpen(false)}>
                 Close
               </Button>
+              {verifiedAssignment && canLaunchAssignment(verifiedAssignment) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleStartAttempt(verifiedAssignment)}
+                >
+                  <PlayCircle className="mr-1.5 h-4 w-4" />
+                  {getAttemptActionLabel(verifiedAssignment)}
+                </Button>
+              )}
               <Button
                 type="submit"
                 disabled={isVerifying}
