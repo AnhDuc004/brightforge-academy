@@ -15,11 +15,12 @@ type Item = {
   icon: React.ComponentType<{ className?: string }>;
   permission?: string | string[];
   studentFallback?: boolean;
+  studentHidden?: boolean;
 };
 type Group = { title: string; items: Item[] };
 
 const groups: Group[] = [
-  { title: "Overview", items: [{ label: "Dashboard", to: "/", icon: LayoutDashboard }] },
+  { title: "Overview", items: [{ label: "Dashboard", to: "/", icon: LayoutDashboard, studentHidden: true }] },
   { title: "Question Bank", items: [
     { label: "Questions", to: "/questions", icon: FileQuestion, permission: "questions.view" },
   ]},
@@ -29,10 +30,10 @@ const groups: Group[] = [
     { label: "Published Tests", to: "/tests", icon: Send, permission: "tests.view" },
   ]},
   { title: "Assignments", items: [
-    { label: "Assignments", to: "/assignments", icon: ClipboardList, permission: "assignments.manage", studentFallback: true },
+    { label: "Assignments", to: "/assignments", icon: ClipboardList, permission: ["assignments.manage", "assignments.view"], studentFallback: true },
   ]},
   { title: "Attempts", items: [
-    { label: "Take exam", to: "/exam", icon: PlayCircle, studentFallback: true },
+    { label: "Take exam", to: "/exam", icon: PlayCircle, studentFallback: true, studentHidden: true },
   ]},
   { title: "Grading", items: [
     { label: "Pending Reviews", to: "/grading", icon: CheckCheck, permission: "grading.review" },
@@ -117,9 +118,14 @@ export function AppSidebar() {
 }
 
 function canSeeItem(context: AuthContext | undefined, item: Item) {
+  if (item.studentHidden && isStudentContext(context)) return false;
   if (item.permission && hasPermission(context, item.permission)) return true;
   if (!item.permission) return true;
   return Boolean(item.studentFallback && !hasAnyGrantedPermission(context));
+}
+
+function isStudentContext(context: AuthContext | undefined) {
+  return Boolean(context?.roles.some((role) => role.name.toLowerCase().includes("student")));
 }
 
 function hasAnyGrantedPermission(context: AuthContext | undefined) {

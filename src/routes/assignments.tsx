@@ -7,6 +7,7 @@ import {
   Clipboard,
   Eye,
   FileStack,
+  GraduationCap,
   Key,
   Loader2,
   MoreHorizontal,
@@ -53,7 +54,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { hasPermission, parseApiError } from "@/lib/auth";
 import { useAuthContextQuery } from "@/lib/auth-context";
 import { listAllTests, type TestResource } from "@/lib/tests";
-import { listAllUsers, type UserResource } from "@/lib/user-management";
+import { listSelectableStudents } from "@/lib/selectable-students";
+import { type UserResource } from "@/lib/user-management";
 import {
   type Assignment,
   type AssignmentAccessType,
@@ -161,6 +163,58 @@ function canLaunchAssignment(assignment: Assignment) {
 
 function getAttemptActionLabel(assignment: Assignment) {
   return assignment.status === "started" ? "Continue attempt" : "Start attempt";
+}
+
+function getStudentActionLabel(assignment: Assignment) {
+  switch (assignment.status) {
+    case "started":
+      return "Continue";
+    case "completed":
+      return "Submitted";
+    case "expired":
+      return "Closed";
+    case "archived":
+      return "Archived";
+    default:
+      return "Start";
+  }
+}
+
+function getStudentStatusLabel(assignment: Assignment) {
+  switch (assignment.status) {
+    case "assigned":
+      return "Ready";
+    case "started":
+      return "In progress";
+    case "completed":
+      return "Completed";
+    case "expired":
+      return "Expired";
+    case "archived":
+      return "Archived";
+    default:
+      return assignment.status;
+  }
+}
+
+function formatRelativeDueDate(value?: string | null) {
+  if (!value) return "No due date";
+
+  const dueAt = new Date(value).getTime();
+  if (Number.isNaN(dueAt)) return formatDateTimeForDisplay(value);
+
+  const diffMs = dueAt - Date.now();
+  const diffMinutes = Math.round(diffMs / 60000);
+  const absMinutes = Math.abs(diffMinutes);
+
+  if (absMinutes < 1) return diffMs >= 0 ? "Due now" : "Just missed";
+  if (absMinutes < 60) return diffMs >= 0 ? `Due in ${absMinutes}m` : `Overdue by ${absMinutes}m`;
+
+  const hours = Math.round(absMinutes / 60);
+  if (hours < 24) return diffMs >= 0 ? `Due in ${hours}h` : `Overdue by ${hours}h`;
+
+  const days = Math.round(hours / 24);
+  return diffMs >= 0 ? `Due in ${days}d` : `Overdue by ${days}d`;
 }
 
 function formatDateTimeForInput(value?: string | null) {
@@ -475,11 +529,418 @@ function getAttemptSummaries(assignment: Assignment): AttemptSummary[] {
     .filter((attempt) => attempt.id);
 }
 
+function StudentAssignmentsView({
+  assignments,
+  isLoading,
+  page,
+  lastPage,
+  total,
+  onRefresh,
+  onStartAttempt,
+}: {
+  assignments: Assignment[];
+  isLoading: boolean;
+  page: number;
+  lastPage: number;
+  total: number;
+  onRefresh: () => void;
+  onStartAttempt: (assignment: Assignment) => void;
+}) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "completed" | "closed">("all");
+
+  const sortedAssignments = useMemo(() => {
+    return [...assignments].sort((left, right) => {
+      const leftPriority = canLaunchAssignment(left) ? 0 : left.status === "completed" ? 1 : 2;
+      const rightPriority = canLaunchAssignment(right) ? 0 : right.status === "completed" ? 1 : 2;
+      if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+
+      const leftDue = left.due_at ? new Date(left.due_at).getTime() : Number.POSITIVE_INFINITY;
+      const rightDue = right.due_at ? new Date(right.due_at).getTime() : Number.POSITIVE_INFINITY;
+      if (leftDue !== rightDue) return leftDue - rightDue;
+
+      return getTestLabel(left).localeCompare(getTestLabel(right));
+    });
+  }, [assignments]);
+
+  const filteredAssignments = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return sortedAssignments.filter((assignment) => {
+      const matchesTerm =
+        !term ||
+        [
+          getTestLabel(assignment),
+          getStudentStatusLabel(assignment),
+          assignment.access_type,
+          assignment.due_at,
+          assignment.test_id,
+        ].some((value) => typeof value === "string" && value.toLowerCase().includes(term));
+
+      const matchesFilter =
+        statusFilter === "all" ||
+        (statusFilter === "active" && canLaunchAssignment(assignment)) ||
+        (statusFilter === "completed" && assignment.status === "completed") ||
+        (statusFilter === "closed" &&
+          (assignment.status === "expired" || assignment.status === "archived"));
+
+      return matchesTerm && matchesFilter;
+    });
+  }, [searchTerm, sortedAssignments, statusFilter]);
+
+  const counts = useMemo(() => {
+    const dueSoonWindow = 1000 * 60 * 60 * 24 * 3;
+    const now = Date.now();
+
+    return {
+      active: assignments.filter((assignment) => canLaunchAssignment(assignment)).length,
+      completed: assignments.filter((assignment) => assignment.status === "completed").length,
+      dueSoon: assignments.filter((assignment) => {
+        if (!assignment.due_at || !canLaunchAssignment(assignment)) return false;
+        const dueAt = new Date(assignment.due_at).getTime();
+        return dueAt >= now && dueAt - now <= dueSoonWindow;
+      }).length,
+    };
+  }, [assignments]);
+
+  const featuredAssignment = useMemo(
+    () => sortedAssignments.find((assignment) => canLaunchAssignment(assignment)) ?? null,
+    [sortedAssignments],
+  );
+
+  const visibleActiveAssignments = filteredAssignments.filter((assignment) => canLaunchAssignment(assignment));
+  const visibleCompletedAssignments = filteredAssignments.filter(
+    (assignment) => assignment.status === "completed",
+  );
+  const visibleClosedAssignments = filteredAssignments.filter(
+    (assignment) => assignment.status === "expired" || assignment.status === "archived",
+  );
+
+  return (
+    <AppLayout
+      breadcrumbs={[{ label: "Assignments" }, { label: "My work" }]}
+      title="Student home"
+      description="Your tests, progress, and next action in one focused workspace."
+      actions={
+        <Button variant="outline" size="sm" onClick={onRefresh} disabled={isLoading}>
+          <RefreshCw className={`mr-1.5 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+          Refresh
+        </Button>
+      }
+    >
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_320px]">
+        <Card className="overflow-hidden border-brand/20 bg-[radial-gradient(circle_at_top_left,rgba(245,179,1,0.22),transparent_35%),linear-gradient(180deg,rgba(20,18,14,0.98),rgba(14,14,16,0.96))] text-white shadow-lg">
+          <div className="flex h-full flex-col gap-6 p-6 sm:p-8">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-white/80 backdrop-blur">
+              <GraduationCap className="h-3.5 w-3.5 text-brand" />
+              Student home
+            </div>
+            <div className="max-w-2xl">
+              <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+                A clean, exam-first home for everything you need to do next.
+              </h2>
+              <p className="mt-3 max-w-xl text-sm leading-6 text-white/70">
+                Continue active work, jump into new tests, and keep completed items out of the way.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <MetricCard label="Ready now" value={counts.active} />
+              <MetricCard label="Due soon" value={counts.dueSoon} />
+              <MetricCard label="Completed" value={counts.completed} />
+            </div>
+
+            {featuredAssignment && (
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="min-w-0">
+                    <div className="text-[11px] uppercase tracking-[0.24em] text-white/55">
+                      Continue now
+                    </div>
+                    <h3 className="mt-1 truncate text-xl font-semibold">
+                      {getTestLabel(featuredAssignment)}
+                    </h3>
+                    <p className="mt-1 text-sm text-white/70">
+                      {formatRelativeDueDate(featuredAssignment.due_at)}
+                    </p>
+                  </div>
+                  <Button
+                    className="bg-brand text-brand-foreground hover:bg-brand/90"
+                    onClick={() => onStartAttempt(featuredAssignment)}
+                  >
+                    <PlayCircle className="mr-1.5 h-4 w-4" />
+                    Resume
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <div className="space-y-4">
+          <Card className="p-5">
+            <div className="flex items-center gap-2">
+              <div className="grid h-9 w-9 place-items-center rounded-md bg-brand/15 text-foreground">
+                <Trophy className="h-4.5 w-4.5" />
+              </div>
+              <div>
+                <div className="text-sm font-semibold">Your flow</div>
+                <div className="text-xs text-muted-foreground">Simple, exam-first navigation</div>
+              </div>
+            </div>
+
+            <ol className="mt-4 space-y-3 text-sm">
+              {[
+                "Open a card to continue or start.",
+                "Keep due work visible at the top.",
+                "Completed tests stay grouped below.",
+              ].map((item, index) => (
+                <li key={item} className="flex gap-3 rounded-md border bg-muted/20 p-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand/15 text-xs font-semibold">
+                    {index + 1}
+                  </span>
+                  <span className="text-muted-foreground">{item}</span>
+                </li>
+              ))}
+            </ol>
+          </Card>
+
+          <Card className="border-dashed p-5">
+            <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">Overview</div>
+            <div className="mt-3 grid gap-3">
+              <div className="rounded-2xl border bg-muted/20 p-3">
+                <div className="text-sm font-medium">Assignments visible</div>
+                <div className="mt-1 text-2xl font-semibold">{filteredAssignments.length}</div>
+              </div>
+              <div className="rounded-2xl border bg-muted/20 p-3">
+                <div className="text-sm font-medium">Page</div>
+                <div className="mt-1 text-2xl font-semibold">
+                  {page}/{lastPage}
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Search tests, status, or due dates..."
+            className="h-11 pl-9"
+          />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { key: "all", label: "All", count: assignments.length },
+            { key: "active", label: "Active", count: counts.active },
+            { key: "completed", label: "Completed", count: counts.completed },
+            {
+              key: "closed",
+              label: "Closed",
+              count: assignments.filter((assignment) => assignment.status === "expired" || assignment.status === "archived").length,
+            },
+          ].map((item) => (
+            <Button
+              key={item.key}
+              type="button"
+              variant={statusFilter === item.key ? "default" : "outline"}
+              size="sm"
+              className={statusFilter === item.key ? "bg-brand text-brand-foreground hover:bg-brand/90" : ""}
+              onClick={() => setStatusFilter(item.key as typeof statusFilter)}
+            >
+              {item.label}
+              <Badge variant="secondary" className="ml-2 bg-background/80">
+                {item.count}
+              </Badge>
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          {Array.from({ length: 4 }, (_, index) => (
+            <Card key={index} className="p-5">
+              <div className="h-4 w-24 animate-pulse rounded bg-muted" />
+              <div className="mt-3 h-6 w-2/3 animate-pulse rounded bg-muted" />
+              <div className="mt-4 h-20 animate-pulse rounded-xl bg-muted/70" />
+            </Card>
+          ))}
+        </div>
+      ) : filteredAssignments.length === 0 ? (
+        <Card className="mt-4 border-dashed p-10 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand/15">
+            <FileStack className="h-6 w-6 text-foreground" />
+          </div>
+          <h3 className="mt-4 text-lg font-semibold">
+            {searchTerm.trim() || statusFilter !== "all"
+              ? "No matching assignments"
+              : "No assignments yet"}
+          </h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {searchTerm.trim() || statusFilter !== "all"
+              ? "Try a different keyword or clear the filters."
+              : "When your teacher assigns a test, it will appear here."}
+          </p>
+        </Card>
+      ) : (
+        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+          {visibleActiveAssignments.length > 0 && (
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                  Continue or start
+                </h3>
+                <Badge variant="secondary">{visibleActiveAssignments.length}</Badge>
+              </div>
+              {visibleActiveAssignments.map((assignment) => (
+                <StudentAssignmentCard
+                  key={assignment.id}
+                  assignment={assignment}
+                  onStartAttempt={onStartAttempt}
+                  accent="ready"
+                />
+              ))}
+            </section>
+          )}
+
+          {visibleCompletedAssignments.length > 0 && (
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                  Completed
+                </h3>
+                <Badge variant="secondary">{visibleCompletedAssignments.length}</Badge>
+              </div>
+              {visibleCompletedAssignments.map((assignment) => (
+                <StudentAssignmentCard
+                  key={assignment.id}
+                  assignment={assignment}
+                  onStartAttempt={onStartAttempt}
+                  accent="done"
+                />
+              ))}
+            </section>
+          )}
+
+          {visibleClosedAssignments.length > 0 && (
+            <section className="space-y-3 xl:col-span-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                  Closed
+                </h3>
+                <Badge variant="secondary">{visibleClosedAssignments.length}</Badge>
+              </div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {visibleClosedAssignments.map((assignment) => (
+                  <StudentAssignmentCard
+                    key={assignment.id}
+                    assignment={assignment}
+                    onStartAttempt={onStartAttempt}
+                    accent="archived"
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+    </AppLayout>
+  );
+}
+
+function MetricCard({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+      <div className="text-[11px] uppercase tracking-wider text-white/55">{label}</div>
+      <div className="mt-2 text-2xl font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function StudentAssignmentCard({
+  assignment,
+  onStartAttempt,
+  accent,
+}: {
+  assignment: Assignment;
+  onStartAttempt: (assignment: Assignment) => void;
+  accent: "ready" | "done" | "archived";
+}) {
+  const canStart = canLaunchAssignment(assignment);
+  const dueLabel = formatRelativeDueDate(assignment.due_at);
+
+  return (
+    <Card
+      className={
+        "p-5 transition hover:shadow-lg " +
+        (accent === "ready"
+          ? "border-brand/20 bg-[linear-gradient(180deg,rgba(245,179,1,0.08),rgba(245,179,1,0.02))]"
+          : accent === "done"
+            ? "border-success/20 bg-[linear-gradient(180deg,rgba(34,197,94,0.06),rgba(34,197,94,0.02))]"
+            : "border-border/70 bg-muted/20")
+      }
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+            {getStudentStatusLabel(assignment)}
+          </div>
+          <h4 className="mt-1 truncate text-lg font-semibold">{getTestLabel(assignment)}</h4>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {dueLabel}
+          </p>
+        </div>
+        <Badge variant="outline" className={statusTone(assignment.status)}>
+          {getStudentStatusLabel(assignment)}
+        </Badge>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <InfoChip label="Attempts" value={String(assignment.current_attempts ?? 0)} />
+        <InfoChip label="Max attempts" value={String(assignment.max_attempts)} />
+        <InfoChip label="Access" value={assignment.access_type} />
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs text-muted-foreground">
+          {canStart
+            ? "Open the exam when you are ready."
+            : assignment.status === "completed"
+              ? "This assignment is already completed."
+              : "This assignment is no longer active."}
+        </div>
+        <Button
+          className="bg-brand text-brand-foreground hover:bg-brand/90"
+          disabled={!canStart}
+          onClick={() => onStartAttempt(assignment)}
+        >
+          <PlayCircle className="mr-1.5 h-4 w-4" />
+          {getStudentActionLabel(assignment)}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function InfoChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border bg-background/70 p-3">
+      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="mt-1 text-sm font-medium">{value}</div>
+    </div>
+  );
+}
+
 function AssignmentsPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const authQuery = useAuthContextQuery();
   const canManageAssignments = hasPermission(authQuery.data, "assignments.manage");
+  const canViewAssignments = hasPermission(authQuery.data, ["assignments.manage", "assignments.view"]);
   const canReview = hasPermission(authQuery.data, "grading.review");
   const canViewReports = hasPermission(authQuery.data, ["reports.view", "grading.review"]);
 
@@ -504,6 +965,9 @@ function AssignmentsPage() {
   const [verifiedAssignment, setVerifiedAssignment] = useState<Assignment | null>(null);
   const [form, setForm] = useState(initialForm);
   const [formErrors, setFormErrors] = useState<AssignmentFieldErrors>({});
+  const [studentSearch, setStudentSearch] = useState("");
+  const [studentPage, setStudentPage] = useState(1);
+  const [debouncedStudentSearch, setDebouncedStudentSearch] = useState("");
 
   const testsQuery = useQuery({
     queryKey: ["tests", "published"],
@@ -512,10 +976,24 @@ function AssignmentsPage() {
     staleTime: 30_000,
   });
 
-  const usersQuery = useQuery({
-    queryKey: ["admin", "users"],
-    queryFn: () => listAllUsers(),
-    enabled: canManageAssignments,
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedStudentSearch(studentSearch.trim());
+      setStudentPage(1);
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [studentSearch]);
+
+  const studentsQuery = useQuery({
+    queryKey: ["assignments", "selectable-students", studentPage, debouncedStudentSearch],
+    queryFn: () =>
+      listSelectableStudents({
+        page: studentPage,
+        per_page: 15,
+        search: debouncedStudentSearch || undefined,
+      }),
+    enabled: canManageAssignments && formOpen,
     staleTime: 30_000,
   });
 
@@ -529,7 +1007,9 @@ function AssignmentsPage() {
   );
 
   const tests = testsQuery.data ?? [];
-  const users = usersQuery.data ?? [];
+  const students = studentsQuery.data?.items ?? [];
+  const studentTotal = studentsQuery.data?.total ?? 0;
+  const studentLastPage = studentsQuery.data?.lastPage ?? 1;
 
   const loadAssignments = useCallback(
     async (nextPage = page, nextAssigneeFilter = appliedAssigneeFilter) => {
@@ -588,6 +1068,9 @@ function AssignmentsPage() {
     setCreatedTokens(null);
     setForm(initialForm);
     setFormErrors({});
+    setStudentSearch("");
+    setStudentPage(1);
+    setDebouncedStudentSearch("");
     setFormOpen(true);
   }
 
@@ -606,6 +1089,9 @@ function AssignmentsPage() {
       mode: "single",
     });
     setFormErrors({});
+    setStudentSearch("");
+    setStudentPage(1);
+    setDebouncedStudentSearch("");
     setFormOpen(true);
   }
 
@@ -643,7 +1129,6 @@ function AssignmentsPage() {
 
       await loadAssignments(page, appliedAssigneeFilter);
       await queryClient.invalidateQueries({ queryKey: ["tests"] });
-      await queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
     } catch (error) {
       toast.error(parseApiError(error).message);
     } finally {
@@ -745,14 +1230,28 @@ function AssignmentsPage() {
   }
 
   const selectedTest = tests.find((test) => test.id === form.test_id);
-  const selectedAssignee = users.find((user) => user.id === form.assignee_id);
+  const selectedAssignee = students.find((user) => user.id === form.assignee_id);
   const selectedAssignees =
-    form.mode === "multiple" ? users.filter((user) => form.assignee_ids.includes(user.id)) : [];
+    form.mode === "multiple" ? students.filter((user) => form.assignee_ids.includes(user.id)) : [];
+
+  if (!canManageAssignments) {
+    return (
+      <StudentAssignmentsView
+        assignments={assignments}
+        isLoading={isLoading}
+        page={page}
+        lastPage={lastPage}
+        total={total}
+        onRefresh={() => loadAssignments(page, appliedAssigneeFilter)}
+        onStartAttempt={(assignment) => void handleStartAttempt(assignment)}
+      />
+    );
+  }
 
   return (
     <AppLayout
       breadcrumbs={[{ label: "Assignments" }, { label: "Active" }]}
-      title={canManageAssignments ? "Assignments" : "My assignments"}
+      title={canManageAssignments ? "Assignments" : canViewAssignments ? "My assignments" : "Assignments"}
       description={
         canManageAssignments
           ? "Distribute published tests to students, manage lifecycle status, and verify assignment access tokens."
@@ -1066,32 +1565,93 @@ function AssignmentsPage() {
               )}
             </div>
 
+            <div className="grid gap-2">
+              <Label htmlFor="student_search">Selectable students</Label>
+              <Input
+                id="student_search"
+                value={studentSearch}
+                onChange={(event) => setStudentSearch(event.target.value)}
+                placeholder="Search by email or display name..."
+              />
+              <p className="text-xs text-muted-foreground">
+                {studentsQuery.isFetching
+                  ? "Đang tải danh sách học sinh..."
+                  : studentTotal > 0
+                    ? `Tìm thấy ${studentTotal} học sinh phù hợp.`
+                    : "Không có học sinh phù hợp."}
+              </p>
+            </div>
+
             {form.mode === "single" ? (
               <div className="grid gap-2">
-                <Label htmlFor="assignee_id">Assignee</Label>
-                <Select
-                  value={form.assignee_id}
-                  onValueChange={(value) => {
-                    setForm((current) => ({ ...current, assignee_id: value }));
-                    setFormErrors((current) => ({ ...current, assignee_id: undefined }));
-                  }}
-                >
-                  <SelectTrigger
-                    id="assignee_id"
-                    className={
-                      formErrors.assignee_id ? "border-destructive focus:ring-destructive" : ""
-                    }
-                  >
-                    <SelectValue placeholder="Select a user" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {users.map((user: UserResource) => (
-                      <SelectItem key={user.id} value={user.id}>
-                        {user.display_name} · {user.email}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Assignee</Label>
+                <div className="max-h-64 overflow-auto rounded-md border p-3">
+                  <div className="grid gap-2">
+                    {students.length === 0 ? (
+                      <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
+                        Không có học sinh phù hợp
+                      </div>
+                    ) : (
+                      students.map((student: UserResource) => {
+                        const selected = form.assignee_id === student.id;
+                        return (
+                          <button
+                            key={student.id}
+                            type="button"
+                            onClick={() => {
+                              setForm((current) => ({ ...current, assignee_id: student.id }));
+                              setFormErrors((current) => ({ ...current, assignee_id: undefined }));
+                            }}
+                            className={
+                              "flex items-start gap-3 rounded-md border px-3 py-2 text-left text-sm transition hover:bg-muted/30 " +
+                              (selected ? "border-brand bg-brand/10" : "bg-background")
+                            }
+                          >
+                            <input
+                              type="radio"
+                              className="mt-1 h-4 w-4"
+                              checked={selected}
+                              readOnly
+                            />
+                            <span className="min-w-0">
+                              <span className="block font-medium">{student.display_name}</span>
+                              <span className="block text-xs text-muted-foreground">
+                                {student.email}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>
+                    Page {studentPage} of {studentLastPage}
+                  </span>
+                  <div className="flex gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7"
+                      disabled={studentPage <= 1 || studentsQuery.isFetching}
+                      onClick={() => setStudentPage((current) => Math.max(1, current - 1))}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7"
+                      disabled={studentPage >= studentLastPage || studentsQuery.isFetching}
+                      onClick={() => setStudentPage((current) => current + 1)}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
                 {formErrors.assignee_id && (
                   <p className="text-xs text-destructive">{formErrors.assignee_id}</p>
                 )}
@@ -1101,34 +1661,67 @@ function AssignmentsPage() {
                 <Label>Assignees</Label>
                 <div className="max-h-64 overflow-auto rounded-md border p-3">
                   <div className="grid gap-2">
-                    {users.map((user: UserResource) => {
-                      const checked = form.assignee_ids.includes(user.id);
-                      return (
-                        <label
-                          key={user.id}
-                          className="flex cursor-pointer items-start gap-3 rounded-md border bg-background px-3 py-2 text-sm hover:bg-muted/30"
-                        >
-                          <input
-                            type="checkbox"
-                            className="mt-1 h-4 w-4"
-                            checked={checked}
-                            onChange={(event) => {
-                              const nextIds = event.target.checked
-                                ? [...form.assignee_ids, user.id]
-                                : form.assignee_ids.filter((id) => id !== user.id);
-                              setForm((current) => ({ ...current, assignee_ids: nextIds }));
-                              setFormErrors((current) => ({ ...current, assignee_ids: undefined }));
-                            }}
-                          />
-                          <span className="min-w-0">
-                            <span className="block font-medium">{user.display_name}</span>
-                            <span className="block text-xs text-muted-foreground">
-                              {user.email}
+                    {students.length === 0 ? (
+                      <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
+                        Không có học sinh phù hợp
+                      </div>
+                    ) : (
+                      students.map((student: UserResource) => {
+                        const checked = form.assignee_ids.includes(student.id);
+                        return (
+                          <label
+                            key={student.id}
+                            className="flex cursor-pointer items-start gap-3 rounded-md border bg-background px-3 py-2 text-sm hover:bg-muted/30"
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-1 h-4 w-4"
+                              checked={checked}
+                              onChange={(event) => {
+                                const nextIds = event.target.checked
+                                  ? [...form.assignee_ids, student.id]
+                                  : form.assignee_ids.filter((id) => id !== student.id);
+                                setForm((current) => ({ ...current, assignee_ids: nextIds }));
+                                setFormErrors((current) => ({ ...current, assignee_ids: undefined }));
+                              }}
+                            />
+                            <span className="min-w-0">
+                              <span className="block font-medium">{student.display_name}</span>
+                              <span className="block text-xs text-muted-foreground">
+                                {student.email}
+                              </span>
                             </span>
-                          </span>
-                        </label>
-                      );
-                    })}
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>
+                    Page {studentPage} of {studentLastPage}
+                  </span>
+                  <div className="flex gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7"
+                      disabled={studentPage <= 1 || studentsQuery.isFetching}
+                      onClick={() => setStudentPage((current) => Math.max(1, current - 1))}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7"
+                      disabled={studentPage >= studentLastPage || studentsQuery.isFetching}
+                      onClick={() => setStudentPage((current) => current + 1)}
+                    >
+                      Next
+                    </Button>
                   </div>
                 </div>
                 {formErrors.assignee_ids && (

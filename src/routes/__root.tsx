@@ -216,6 +216,7 @@ function getRequiredPermission(pathname: string) {
   if (pathname.startsWith("/grading")) return "grading.review";
   if (pathname.startsWith("/results")) return ["reports.view", "grading.review"];
   if (pathname.startsWith("/users")) return "users.manage";
+  if (pathname.startsWith("/assignments")) return ["assignments.manage", "assignments.view"];
   if (pathname.startsWith("/audit")) return "audit.view";
   return undefined;
 }
@@ -224,7 +225,7 @@ function getDefaultRoute(context: AuthContext) {
   if (hasPermission(context, "users.manage")) return "/";
   if (hasPermission(context, "questions.view")) return "/questions";
   if (hasPermission(context, "tests.view")) return "/tests";
-  if (hasPermission(context, "assignments.manage")) return "/assignments";
+  if (hasPermission(context, ["assignments.manage", "assignments.view"])) return "/assignments";
   if (hasPermission(context, "grading.review")) return "/grading";
   return "/assignments";
 }
