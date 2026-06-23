@@ -3,10 +3,10 @@ import {
   LayoutDashboard, FileQuestion, Wrench, FileStack,
   Layers, Send, ClipboardList, PlayCircle,
   CheckCheck, Trophy, Users, ShieldCheck,
-  Key, ScrollText, ChevronRight, GraduationCap,
+  Key, ScrollText, ChevronRight, GraduationCap, Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { hasPermission, type AuthContext } from "@/lib/auth";
+import { canAccessSystemAdmin, hasPermission, type AuthContext } from "@/lib/auth";
 import { useAuthContextQuery } from "@/lib/auth-context";
 
 type Item = {
@@ -16,36 +16,40 @@ type Item = {
   permission?: string | string[];
   studentFallback?: boolean;
   studentHidden?: boolean;
+  systemAdminOnly?: boolean;
 };
 type Group = { title: string; items: Item[] };
 
 const groups: Group[] = [
+  { title: "System Administration", items: [
+    { label: "Tenant Management", to: "/system", icon: Building2, permission: "tenant:manage", systemAdminOnly: true },
+  ]},
   { title: "Overview", items: [{ label: "Dashboard", to: "/", icon: LayoutDashboard, studentHidden: true }] },
   { title: "Question Bank", items: [
-    { label: "Questions", to: "/questions", icon: FileQuestion, permission: "questions.view" },
+    { label: "Questions", to: "/questions", icon: FileQuestion, permission: "questions:view" },
   ]},
   { title: "Test Builder", items: [
-    { label: "Tests", to: "/tests", icon: FileStack, permission: "tests.view" },
-    { label: "Builder", to: "/tests/builder", icon: Layers, permission: "tests.build" },
-    { label: "Published Tests", to: "/tests", icon: Send, permission: "tests.view" },
+    { label: "Tests", to: "/tests", icon: FileStack, permission: "tests:view" },
+    { label: "Builder", to: "/tests/builder", icon: Layers, permission: "tests:update-sections" },
+    { label: "Published Tests", to: "/tests", icon: Send, permission: "tests:publish" },
   ]},
   { title: "Assignments", items: [
-    { label: "Assignments", to: "/assignments", icon: ClipboardList, permission: ["assignments.manage", "assignments.view"], studentFallback: true },
+    { label: "Assignments", to: "/assignments", icon: ClipboardList, permission: ["assignments:create", "assignments:view"], studentFallback: true },
   ]},
   { title: "Attempts", items: [
-    { label: "Take exam", to: "/exam", icon: PlayCircle, studentFallback: true, studentHidden: true },
+    { label: "Take exam", to: "/exam", icon: PlayCircle, permission: "attempts:start", studentFallback: true, studentHidden: true },
   ]},
   { title: "Grading", items: [
-    { label: "Pending Reviews", to: "/grading", icon: CheckCheck, permission: "grading.review" },
+    { label: "Pending Reviews", to: "/grading", icon: CheckCheck, permission: "grading:view-pending" },
   ]},
   { title: "Results", items: [
-    { label: "Exam Results", to: "/results", icon: Trophy, permission: ["reports.view", "grading.review"] },
+    { label: "Exam Results", to: "/results", icon: Trophy, permission: ["reports:view", "grading:view-pending"] },
   ]},
   { title: "Administration", items: [
-    { label: "Users", to: "/users", icon: Users, permission: "users.manage" },
-    { label: "Roles", to: "/users", icon: ShieldCheck, permission: "roles.view" },
-    { label: "Permissions", to: "/users", icon: Key, permission: "permissions.view" },
-    { label: "Audit Logs", to: "/audit", icon: ScrollText, permission: "audit.view" },
+    { label: "Users", to: "/users", icon: Users, permission: "users:view" },
+    { label: "Roles", to: "/users", icon: ShieldCheck, permission: "roles:view" },
+    { label: "Permissions", to: "/users", icon: Key, permission: "tenant:settings" },
+    { label: "Audit Logs", to: "/audit", icon: ScrollText, permission: "audit:view" },
   ]},
 ];
 
@@ -118,6 +122,7 @@ export function AppSidebar() {
 }
 
 function canSeeItem(context: AuthContext | undefined, item: Item) {
+  if (item.systemAdminOnly && !canAccessSystemAdmin(context)) return false;
   if (item.studentHidden && isStudentContext(context)) return false;
   if (item.permission && hasPermission(context, item.permission)) return true;
   if (!item.permission) return true;

@@ -13,7 +13,13 @@ import { useEffect, useState, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
-import { clearAccessToken, getAccessToken, hasPermission, type AuthContext } from "@/lib/auth";
+import {
+  canAccessSystemAdmin,
+  clearAccessToken,
+  getAccessToken,
+  hasPermission,
+  type AuthContext,
+} from "@/lib/auth";
 import { useAuthContextQuery } from "@/lib/auth-context";
 
 function NotFoundComponent() {
@@ -148,7 +154,11 @@ function AuthGate() {
   const shouldRedirectToLogin = authState === "guest" && !isAuthRoute;
   const shouldRedirectToDashboard = authState === "authed" && isAuthRoute;
   const requiredPermission = getRequiredPermission(pathname);
-  const hasRouteAccess = authState !== "authed" || hasPermission(authQuery.data, requiredPermission);
+  const hasRouteAccess =
+    authState !== "authed" ||
+    (pathname.startsWith("/system")
+      ? canAccessSystemAdmin(authQuery.data)
+      : hasPermission(authQuery.data, requiredPermission));
   const fallbackRoute = authQuery.data ? getDefaultRoute(authQuery.data) : "/";
 
   useEffect(() => {
@@ -209,23 +219,26 @@ function AuthGate() {
 }
 
 function getRequiredPermission(pathname: string) {
-  if (pathname.startsWith("/questions/new")) return "questions.create";
-  if (pathname.startsWith("/questions")) return "questions.view";
-  if (pathname.startsWith("/tests/builder")) return "tests.build";
-  if (pathname.startsWith("/tests")) return "tests.view";
-  if (pathname.startsWith("/grading")) return "grading.review";
-  if (pathname.startsWith("/results")) return ["reports.view", "grading.review"];
-  if (pathname.startsWith("/users")) return "users.manage";
-  if (pathname.startsWith("/assignments")) return ["assignments.manage", "assignments.view"];
-  if (pathname.startsWith("/audit")) return "audit.view";
+  if (pathname.startsWith("/system")) return "tenant:manage";
+  if (pathname.startsWith("/questions/new")) return "questions:create";
+  if (pathname.startsWith("/questions")) return "questions:view";
+  if (pathname.startsWith("/tests/builder")) return "tests:update-sections";
+  if (pathname.startsWith("/tests")) return "tests:view";
+  if (pathname.startsWith("/grading")) return "grading:view-pending";
+  if (pathname.startsWith("/results")) return ["reports:view", "grading:view-pending"];
+  if (pathname.startsWith("/users")) return ["users:view", "roles:view", "tenant:settings"];
+  if (pathname.startsWith("/assignments")) return ["assignments:create", "assignments:view"];
+  if (pathname.startsWith("/audit")) return "audit:view";
   return undefined;
 }
 
 function getDefaultRoute(context: AuthContext) {
-  if (hasPermission(context, "users.manage")) return "/";
-  if (hasPermission(context, "questions.view")) return "/questions";
-  if (hasPermission(context, "tests.view")) return "/tests";
-  if (hasPermission(context, ["assignments.manage", "assignments.view"])) return "/assignments";
-  if (hasPermission(context, "grading.review")) return "/grading";
+  if (canAccessSystemAdmin(context)) return "/system";
+  if (hasPermission(context, "users:view")) return "/";
+  if (hasPermission(context, ["roles:view", "tenant:settings"])) return "/users";
+  if (hasPermission(context, "questions:view")) return "/questions";
+  if (hasPermission(context, "tests:view")) return "/tests";
+  if (hasPermission(context, ["assignments:create", "assignments:view"])) return "/assignments";
+  if (hasPermission(context, "grading:view-pending")) return "/grading";
   return "/assignments";
 }

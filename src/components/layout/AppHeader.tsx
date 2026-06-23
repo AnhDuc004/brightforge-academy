@@ -38,7 +38,7 @@ export function AppHeader({ breadcrumbs = [] as { label: string; to?: string }[]
   const context = meQuery.data;
   const profile = context?.user;
   const tenantName = context?.tenant?.name ?? "Current tenant";
-  const showCreate = hasPermission(context, ["questions.create", "tests.build", "assignments.manage"]);
+  const showCreate = hasPermission(context, ["questions:create", "tests:create", "assignments:create"]);
 
   const profileName = profile?.display_name ?? (meQuery.isLoading ? "Loading user..." : "Unknown user");
   const profileEmail = profile?.email ?? (meQuery.isLoading ? "Fetching profile..." : "No email available");

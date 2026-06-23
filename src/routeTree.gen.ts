@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UsersRouteImport } from './routes/users'
 import { Route as TestsRouteImport } from './routes/tests'
+import { Route as SystemRouteImport } from './routes/system'
 import { Route as ResultsRouteImport } from './routes/results'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as QuestionsRouteImport } from './routes/questions'
@@ -32,6 +33,11 @@ const UsersRoute = UsersRouteImport.update({
 const TestsRoute = TestsRouteImport.update({
   id: '/tests',
   path: '/tests',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SystemRoute = SystemRouteImport.update({
+  id: '/system',
+  path: '/system',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResultsRoute = ResultsRouteImport.update({
@@ -105,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/questions': typeof QuestionsRouteWithChildren
   '/register': typeof RegisterRoute
   '/results': typeof ResultsRoute
+  '/system': typeof SystemRoute
   '/tests': typeof TestsRouteWithChildren
   '/users': typeof UsersRoute
   '/questions/new': typeof QuestionsNewRoute
@@ -121,6 +128,7 @@ export interface FileRoutesByTo {
   '/questions': typeof QuestionsRouteWithChildren
   '/register': typeof RegisterRoute
   '/results': typeof ResultsRoute
+  '/system': typeof SystemRoute
   '/tests': typeof TestsRouteWithChildren
   '/users': typeof UsersRoute
   '/questions/new': typeof QuestionsNewRoute
@@ -138,6 +146,7 @@ export interface FileRoutesById {
   '/questions': typeof QuestionsRouteWithChildren
   '/register': typeof RegisterRoute
   '/results': typeof ResultsRoute
+  '/system': typeof SystemRoute
   '/tests': typeof TestsRouteWithChildren
   '/users': typeof UsersRoute
   '/questions/new': typeof QuestionsNewRoute
@@ -156,6 +165,7 @@ export interface FileRouteTypes {
     | '/questions'
     | '/register'
     | '/results'
+    | '/system'
     | '/tests'
     | '/users'
     | '/questions/new'
@@ -172,6 +182,7 @@ export interface FileRouteTypes {
     | '/questions'
     | '/register'
     | '/results'
+    | '/system'
     | '/tests'
     | '/users'
     | '/questions/new'
@@ -188,6 +199,7 @@ export interface FileRouteTypes {
     | '/questions'
     | '/register'
     | '/results'
+    | '/system'
     | '/tests'
     | '/users'
     | '/questions/new'
@@ -205,6 +217,7 @@ export interface RootRouteChildren {
   QuestionsRoute: typeof QuestionsRouteWithChildren
   RegisterRoute: typeof RegisterRoute
   ResultsRoute: typeof ResultsRoute
+  SystemRoute: typeof SystemRoute
   TestsRoute: typeof TestsRouteWithChildren
   UsersRoute: typeof UsersRoute
 }
@@ -223,6 +236,13 @@ declare module '@tanstack/react-router' {
       path: '/tests'
       fullPath: '/tests'
       preLoaderRoute: typeof TestsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/system': {
+      id: '/system'
+      path: '/system'
+      fullPath: '/system'
+      preLoaderRoute: typeof SystemRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/results': {
@@ -346,6 +366,7 @@ const rootRouteChildren: RootRouteChildren = {
   QuestionsRoute: QuestionsRouteWithChildren,
   RegisterRoute: RegisterRoute,
   ResultsRoute: ResultsRoute,
+  SystemRoute: SystemRoute,
   TestsRoute: TestsRouteWithChildren,
   UsersRoute: UsersRoute,
 }

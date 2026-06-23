@@ -38,6 +38,8 @@ export type AuthContext = {
   roles: AuthRole[];
 };
 
+export type PermissionRequirement = string | string[];
+
 const FIELD_NAME_ALIASES: Record<string, string> = {
   password_confirmation: "passwordConfirmation",
   passwordConfirm: "passwordConfirmation",
@@ -185,6 +187,14 @@ export function parseApiError(error: unknown): {
   };
 
   const responseData = axiosError.response?.data;
+  const statusCode = axiosError.response?.status;
+
+  if (statusCode === 403) {
+    return {
+      message: "Ban khong co quyen thuc hien thao tac nay.",
+      fieldErrors: {},
+    };
+  }
 
   if (responseData && typeof responseData === "object") {
     const data = responseData as Record<string, unknown>;
@@ -286,7 +296,8 @@ function normalizePermission(value: unknown): AuthPermission | null {
   if (!value) return null;
 
   if (typeof value === "string") {
-    const [resource, action = "*"] = value.split(".");
+    const delimiter = value.includes(":") ? ":" : ".";
+    const [resource, action = "*"] = value.split(delimiter);
     return resource ? { resource, action } : null;
   }
 
@@ -381,31 +392,42 @@ export function normalizeAuthContext(payload: unknown): AuthContext | null {
 }
 
 export function permissionKey(permission: AuthPermission) {
-  return `${permission.resource}.${permission.action}`;
+  return `${permission.resource}:${permission.action}`;
 }
 
-export function hasPermission(context: AuthContext | null | undefined, required?: string | string[]) {
+function normalizePermissionRequirement(requirement: string) {
+  const delimiter = requirement.includes(":") ? ":" : ".";
+  const [resource, action = "*"] = requirement.split(delimiter);
+  return { resource, action, key: `${resource}:${action}` };
+}
+
+export function hasPermission(context: AuthContext | null | undefined, required?: PermissionRequirement) {
   if (!required) return true;
   if (!context) return false;
 
   const requirements = Array.isArray(required) ? required : [required];
   if (requirements.length === 0) return true;
 
-  const roleNames = context.roles.map((role) => role.name.toLowerCase());
-  if (roleNames.some((name) => name === "tenant admin" || name === "system admin" || name === "admin")) {
-    return true;
-  }
-
   const granted = new Set(context.permissions.map(permissionKey));
-  if (granted.has("*.*")) return true;
+  if (granted.has("*:*")) return true;
 
   return requirements.some((item) => {
-    const [resource, action = "*"] = item.split(".");
+    const { resource, action, key } = normalizePermissionRequirement(item);
     return (
-      granted.has(item) ||
-      granted.has(`${resource}.*`) ||
-      granted.has(`*.${action}`) ||
-      granted.has(`${resource}.manage`)
+      granted.has(key) ||
+      granted.has(`${resource}:*`) ||
+      granted.has(`*:${action}`)
     );
   });
+}
+
+export function hasRole(context: AuthContext | null | undefined, roleName: string) {
+  const expected = roleName.trim().toLocaleLowerCase();
+  if (!expected || !context) return false;
+
+  return context.roles.some((role) => role.name.trim().toLocaleLowerCase() === expected);
+}
+
+export function canAccessSystemAdmin(context: AuthContext | null | undefined) {
+  return hasRole(context, "System Admin") && hasPermission(context, "tenant:manage");
 }

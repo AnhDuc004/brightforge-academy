@@ -11,7 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Copy, Loader2, Plus, Search, MoreHorizontal, Mail, ShieldCheck, Key } from "lucide-react";
 import { toast } from "sonner";
-import { getInitials } from "@/lib/auth";
+import { getInitials, hasPermission, parseApiError } from "@/lib/auth";
+import { useAuthContextQuery } from "@/lib/auth-context";
 import {
   listAllPermissions,
   listAllRoles,
@@ -37,6 +38,7 @@ export const Route = createFileRoute("/users")({
 });
 
 function UsersPage() {
+  const authQuery = useAuthContextQuery();
   const [userSearch, setUserSearch] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -44,21 +46,29 @@ function UsersPage() {
   const [inviteUrl, setInviteUrl] = useState("");
   const [isCreatingInvite, setIsCreatingInvite] = useState(false);
 
+  const canViewUsers = hasPermission(authQuery.data, "users:view");
+  const canCreateUsers = hasPermission(authQuery.data, "users:create");
+  const canViewRoles = hasPermission(authQuery.data, "roles:view");
+  const canManagePermissions = hasPermission(authQuery.data, "tenant:settings");
+
   const usersQuery = useQuery({
     queryKey: ["admin", "users"],
     queryFn: () => listAllUsers(),
+    enabled: canViewUsers || canViewRoles,
     staleTime: 30_000,
   });
 
   const rolesQuery = useQuery({
     queryKey: ["admin", "roles"],
     queryFn: () => listAllRoles(),
+    enabled: canViewRoles || canManagePermissions,
     staleTime: 30_000,
   });
 
   const permissionsQuery = useQuery({
     queryKey: ["admin", "permissions"],
     queryFn: () => listAllPermissions(),
+    enabled: canManagePermissions,
     staleTime: 30_000,
   });
 
@@ -82,11 +92,19 @@ function UsersPage() {
   const roles = rolesQuery.data ?? [];
   const permissions = permissionsQuery.data ?? [];
 
-  const rolePermissionKeys = (role: RoleResource) =>
-    role.permissions.map((permission) => `${permission.resource}.${permission.action}`);
-
   const permissionKey = (permission: PermissionResource) =>
-    `${permission.resource}.${permission.action}`;
+    `${permission.resource}:${permission.action}`;
+
+  const rolePermissionMap = useMemo(
+    () =>
+      new Map(
+        roles.map((role) => [
+          role.id,
+          new Set(role.permissions.map((permission) => `${permission.resource}:${permission.action}`)),
+        ]),
+      ),
+    [roles],
+  );
 
   function isGlobalRole(role: RoleResource) {
     return role.tenant_id == null;
@@ -103,14 +121,20 @@ function UsersPage() {
       setInviteUrl(invitation.invite_url);
       toast.success("Student invitation created.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to create invitation.");
+      toast.error(parseApiError(error).message);
     } finally {
       setIsCreatingInvite(false);
     }
   }
 
-  const loading = usersQuery.isLoading || rolesQuery.isLoading || permissionsQuery.isLoading;
-  const error = usersQuery.error || rolesQuery.error || permissionsQuery.error;
+  const loading =
+    ((canViewUsers || canViewRoles) && usersQuery.isLoading) ||
+    ((canViewRoles || canManagePermissions) && rolesQuery.isLoading) ||
+    (canManagePermissions && permissionsQuery.isLoading);
+  const error =
+    ((canViewUsers || canViewRoles) ? usersQuery.error : null) ||
+    ((canViewRoles || canManagePermissions) ? rolesQuery.error : null) ||
+    (canManagePermissions ? permissionsQuery.error : null);
 
   return (
     <AppLayout
@@ -119,38 +143,48 @@ function UsersPage() {
       description="Invite users, assign roles, and manage permissions across the current tenant."
       actions={
         <>
-          <Button variant="outline" size="sm" onClick={() => setInviteOpen(true)}>
-            <Mail className="h-4 w-4 mr-1.5" /> Mời student
-          </Button>
-          <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90">
-            <Plus className="h-4 w-4 mr-1.5" /> Add user
-          </Button>
+          {canCreateUsers && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setInviteOpen(true)}>
+                <Mail className="h-4 w-4 mr-1.5" /> Mời student
+              </Button>
+              <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90">
+                <Plus className="h-4 w-4 mr-1.5" /> Add user
+              </Button>
+            </>
+          )}
         </>
       }
     >
-      <Tabs defaultValue="users">
+      <Tabs defaultValue={canViewUsers ? "users" : canViewRoles ? "roles" : "permissions"}>
         <TabsList className="bg-muted/50">
-          <TabsTrigger value="users">
-            Users{" "}
-            <Badge variant="secondary" className="ml-2">
-              {allUsers.length}
-            </Badge>
-          </TabsTrigger>
-          <TabsTrigger value="roles">
-            Roles{" "}
-            <Badge variant="secondary" className="ml-2">
-              {roles.length}
-            </Badge>
-          </TabsTrigger>
-          <TabsTrigger value="permissions">
-            Permissions{" "}
-            <Badge variant="secondary" className="ml-2">
-              {permissions.length}
-            </Badge>
-          </TabsTrigger>
+          {canViewUsers && (
+            <TabsTrigger value="users">
+              Users{" "}
+              <Badge variant="secondary" className="ml-2">
+                {allUsers.length}
+              </Badge>
+            </TabsTrigger>
+          )}
+          {canViewRoles && (
+            <TabsTrigger value="roles">
+              Roles{" "}
+              <Badge variant="secondary" className="ml-2">
+                {roles.length}
+              </Badge>
+            </TabsTrigger>
+          )}
+          {canManagePermissions && (
+            <TabsTrigger value="permissions">
+              Permissions{" "}
+              <Badge variant="secondary" className="ml-2">
+                {permissions.length}
+              </Badge>
+            </TabsTrigger>
+          )}
         </TabsList>
 
-        <TabsContent value="users" className="mt-4">
+        {canViewUsers && <TabsContent value="users" className="mt-4">
           <Card className="overflow-hidden">
             <div className="p-3 border-b flex items-center gap-2">
               <div className="relative flex-1 max-w-sm">
@@ -258,9 +292,9 @@ function UsersPage() {
               </table>
             )}
           </Card>
-        </TabsContent>
+        </TabsContent>}
 
-        <TabsContent value="roles" className="mt-4">
+        {canViewRoles && <TabsContent value="roles" className="mt-4">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             {roles.map((role: RoleResource) => (
               <Card key={role.id} className="p-5">
@@ -299,7 +333,7 @@ function UsersPage() {
                       variant="secondary"
                       className="font-mono text-[10px] font-normal"
                     >
-                      {permission.resource}.{permission.action}
+                      {permission.resource}:{permission.action}
                     </Badge>
                   ))}
                   {role.permissions.length > 4 && (
@@ -320,55 +354,101 @@ function UsersPage() {
               </Card>
             ))}
           </div>
-        </TabsContent>
+        </TabsContent>}
 
-        <TabsContent value="permissions" className="mt-4">
+        {canManagePermissions && <TabsContent value="permissions" className="mt-4">
           <Card className="overflow-hidden">
-            <div className="p-4 border-b">
-              <h3 className="font-semibold flex items-center gap-2">
-                <Key className="h-4 w-4 text-brand" /> Permission matrix
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                Read-only catalog of global permissions. Only System Admin can change the catalog.
-              </p>
+            <div className="border-b bg-muted/20 px-5 py-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <h3 className="flex items-center gap-2 font-semibold">
+                    <Key className="h-4 w-4 text-brand" /> Permission matrix
+                  </h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Read-only catalog of global permissions. Only System Admin can change the
+                    catalog.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-primary" />
+                    Granted
+                  </div>
+                  <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/35" />
+                    Not granted
+                  </div>
+                </div>
+              </div>
             </div>
-            <table className="w-full text-sm">
-              <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
-                <tr>
-                  <th className="text-left px-4 py-2.5 font-medium">Permission</th>
-                  {roles.map((role) => (
-                    <th key={role.id} className="text-center px-4 py-2.5 font-medium">
-                      {role.name}
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px] text-sm">
+                <thead className="bg-muted/30 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  <tr className="border-b">
+                    <th className="sticky left-0 z-20 min-w-[240px] bg-muted/30 px-5 py-3 text-left font-medium">
+                      Permission
                     </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {permissions.map((permission) => (
-                  <tr key={permission.id} className="hover:bg-muted/20">
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{permission.resource}</div>
-                      <div className="text-[11px] font-mono text-muted-foreground">
-                        {permissionKey(permission)}
-                      </div>
-                    </td>
                     {roles.map((role) => (
-                      <td key={role.id} className="text-center px-4 py-3">
-                        <Checkbox
-                          defaultChecked={rolePermissionKeys(role).includes(
-                            permissionKey(permission),
-                          )}
-                          disabled
-                          aria-label={`${permission.resource}.${permission.action} for ${role.name}`}
-                        />
-                      </td>
+                      <th key={role.id} className="min-w-[150px] px-3 py-3 font-medium">
+                        <div className="flex flex-col items-center gap-1 text-center normal-case tracking-normal">
+                          <span className="text-sm font-semibold text-foreground">{role.name}</span>
+                          <Badge
+                            variant="outline"
+                            className={isGlobalRole(role) ? "bg-background/80" : "bg-brand/10"}
+                          >
+                            {isGlobalRole(role) ? "Global" : "Tenant"}
+                          </Badge>
+                        </div>
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y">
+                  {permissions.map((permission) => {
+                    const permissionId = permissionKey(permission);
+
+                    return (
+                      <tr key={permission.id} className="bg-background transition-colors hover:bg-muted/20">
+                        <td className="sticky left-0 z-10 bg-background px-5 py-4 align-middle">
+                          <div className="space-y-1">
+                            <div className="font-medium text-foreground">{permission.resource}</div>
+                            <div className="text-[11px] font-mono text-muted-foreground">
+                              {permissionId}
+                            </div>
+                          </div>
+                        </td>
+                        {roles.map((role) => {
+                          const isGranted = rolePermissionMap.get(role.id)?.has(permissionId) ?? false;
+
+                          return (
+                            <td key={role.id} className="px-3 py-4 align-middle">
+                              <div className="flex items-center justify-center">
+                                <div
+                                  className={
+                                    isGranted
+                                      ? "flex h-10 w-10 items-center justify-center rounded-xl border border-primary/25 bg-primary/10"
+                                      : "flex h-10 w-10 items-center justify-center rounded-xl border border-border/70 bg-muted/25"
+                                  }
+                                >
+                                  <Checkbox
+                                    checked={isGranted}
+                                    disabled
+                                    className="m-0"
+                                    aria-label={`${permission.resource}:${permission.action} for ${role.name}`}
+                                  />
+                                </div>
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </Card>
-        </TabsContent>
+        </TabsContent>}
       </Tabs>
 
       <Dialog

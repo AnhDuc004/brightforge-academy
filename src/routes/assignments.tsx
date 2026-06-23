@@ -939,10 +939,10 @@ function AssignmentsPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const authQuery = useAuthContextQuery();
-  const canManageAssignments = hasPermission(authQuery.data, "assignments.manage");
-  const canViewAssignments = hasPermission(authQuery.data, ["assignments.manage", "assignments.view"]);
-  const canReview = hasPermission(authQuery.data, "grading.review");
-  const canViewReports = hasPermission(authQuery.data, ["reports.view", "grading.review"]);
+  const canManageAssignments = hasPermission(authQuery.data, "assignments:create");
+  const canViewAssignments = hasPermission(authQuery.data, ["assignments:create", "assignments:view"]);
+  const canReview = hasPermission(authQuery.data, "grading:view-pending");
+  const canViewReports = hasPermission(authQuery.data, ["reports:view", "grading:view-pending"]);
 
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [isLoading, setIsLoading] = useState(true);

@@ -24,8 +24,12 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
 
-    if (tenantId) {
+    // Tenant management is a global System Admin API and must not inherit tenant context.
+    const isGlobalTenantAdminRequest = config.url?.startsWith("/v1/tenants");
+    if (tenantId && !isGlobalTenantAdminRequest) {
       config.headers["X-Tenant-ID"] = tenantId;
+    } else if (isGlobalTenantAdminRequest) {
+      delete config.headers["X-Tenant-ID"];
     }
 
     return config;
