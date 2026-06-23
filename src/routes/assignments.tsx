@@ -50,7 +50,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { getTenantId, hasPermission, parseApiError } from "@/lib/auth";
+import { hasPermission, parseApiError } from "@/lib/auth";
 import { useAuthContextQuery } from "@/lib/auth-context";
 import { listAllTests, type TestResource } from "@/lib/tests";
 import { listAllUsers, type UserResource } from "@/lib/user-management";
@@ -482,7 +482,6 @@ function AssignmentsPage() {
   const canManageAssignments = hasPermission(authQuery.data, "assignments.manage");
   const canReview = hasPermission(authQuery.data, "grading.review");
   const canViewReports = hasPermission(authQuery.data, ["reports.view", "grading.review"]);
-  const tenantId = getTenantId() ?? undefined;
 
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -507,15 +506,15 @@ function AssignmentsPage() {
   const [formErrors, setFormErrors] = useState<AssignmentFieldErrors>({});
 
   const testsQuery = useQuery({
-    queryKey: ["tests", "published", tenantId],
+    queryKey: ["tests", "published"],
     queryFn: () => listAllTests({ status: "published" }),
     enabled: canManageAssignments,
     staleTime: 30_000,
   });
 
   const usersQuery = useQuery({
-    queryKey: ["admin", "users", tenantId],
-    queryFn: () => listAllUsers({ tenant_id: tenantId }),
+    queryKey: ["admin", "users"],
+    queryFn: () => listAllUsers(),
     enabled: canManageAssignments,
     staleTime: 30_000,
   });
@@ -685,7 +684,10 @@ function AssignmentsPage() {
 
       toast.success(assignment.status === "started" ? "Attempt resumed." : "Attempt started.");
       await loadAssignments(page, appliedAssigneeFilter);
-      navigate({ to: "/exam", search: attemptId ? ({ attemptId } as never) : undefined });
+      navigate({
+        to: "/exam",
+        search: attemptId ? ({ attemptId } as never) : ({ attemptId: undefined } as never),
+      });
     } catch (error) {
       toast.error(parseApiError(error).message);
     }
@@ -967,7 +969,7 @@ function AssignmentsPage() {
 
       <div className="mt-3 text-center text-xs text-muted-foreground">
         Need to take an exam?{" "}
-        <Link to="/exam" className="font-medium underline">
+        <Link to="/exam" search={{ attemptId: undefined }} className="font-medium underline">
           Open the exam-taking demo →
         </Link>
       </div>

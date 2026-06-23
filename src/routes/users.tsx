@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Copy, Loader2, Plus, Search, MoreHorizontal, Mail, ShieldCheck, Key } from "lucide-react";
 import { toast } from "sonner";
-import { getTenantId, getInitials } from "@/lib/auth";
+import { getInitials } from "@/lib/auth";
 import {
   listAllPermissions,
   listAllRoles,
@@ -43,17 +43,16 @@ function UsersPage() {
   const [inviteDays, setInviteDays] = useState("7");
   const [inviteUrl, setInviteUrl] = useState("");
   const [isCreatingInvite, setIsCreatingInvite] = useState(false);
-  const tenantId = getTenantId() ?? undefined;
 
   const usersQuery = useQuery({
-    queryKey: ["admin", "users", tenantId],
-    queryFn: () => listAllUsers({ tenant_id: tenantId }),
+    queryKey: ["admin", "users"],
+    queryFn: () => listAllUsers(),
     staleTime: 30_000,
   });
 
   const rolesQuery = useQuery({
-    queryKey: ["admin", "roles", tenantId],
-    queryFn: () => listAllRoles({ tenant_id: tenantId }),
+    queryKey: ["admin", "roles"],
+    queryFn: () => listAllRoles(),
     staleTime: 30_000,
   });
 
@@ -88,6 +87,10 @@ function UsersPage() {
 
   const permissionKey = (permission: PermissionResource) =>
     `${permission.resource}.${permission.action}`;
+
+  function isGlobalRole(role: RoleResource) {
+    return role.tenant_id == null;
+  }
 
   async function handleCreateInvite(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -276,6 +279,16 @@ function UsersPage() {
                     </div>
                   </div>
                 </div>
+                <div className="mt-3 flex items-center gap-2">
+                  <Badge variant="outline" className={isGlobalRole(role) ? "bg-muted/40" : ""}>
+                    {isGlobalRole(role) ? "Global" : "Current tenant"}
+                  </Badge>
+                  {isGlobalRole(role) && (
+                    <span className="text-xs text-muted-foreground">
+                      Read-only catalog role for assignment.
+                    </span>
+                  )}
+                </div>
                 <div className="mt-4 text-xs text-muted-foreground">
                   {role.permissions.length} permissions granted
                 </div>
@@ -295,8 +308,14 @@ function UsersPage() {
                     </Badge>
                   )}
                 </div>
-                <Button variant="outline" size="sm" className="w-full mt-4">
-                  Edit role
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full mt-4"
+                  disabled={isGlobalRole(role)}
+                  title={isGlobalRole(role) ? "Global roles are read-only." : "Edit role"}
+                >
+                  {isGlobalRole(role) ? "Read-only" : "Edit role"}
                 </Button>
               </Card>
             ))}
@@ -310,7 +329,7 @@ function UsersPage() {
                 <Key className="h-4 w-4 text-brand" /> Permission matrix
               </h3>
               <p className="text-xs text-muted-foreground mt-1">
-                Toggle to grant a permission to a role across the tenant.
+                Read-only catalog of global permissions. Only System Admin can change the catalog.
               </p>
             </div>
             <table className="w-full text-sm">
@@ -339,6 +358,8 @@ function UsersPage() {
                           defaultChecked={rolePermissionKeys(role).includes(
                             permissionKey(permission),
                           )}
+                          disabled
+                          aria-label={`${permission.resource}.${permission.action} for ${role.name}`}
                         />
                       </td>
                     ))}

@@ -62,7 +62,6 @@ export type UserResource = {
 };
 
 export type ListParams = {
-  tenant_id?: string;
   page?: number;
   per_page?: number;
 };
@@ -152,11 +151,7 @@ async function fetchPage<T>(
   const page = params.page ?? 1;
   const per_page = params.per_page ?? 50;
   const response = await api.get<ApiEnvelope<unknown>>(path, {
-    params: {
-      ...(params.tenant_id ? { tenant_id: params.tenant_id } : {}),
-      page,
-      per_page,
-    },
+    params: { page, per_page },
   });
 
   return normalizePage<T>(response.data, { page, per_page });
