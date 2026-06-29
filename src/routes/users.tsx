@@ -33,7 +33,7 @@ import {
 import { Label } from "@/components/ui/label";
 
 export const Route = createFileRoute("/users")({
-  head: () => ({ meta: [{ title: "User management · ExamForge" }] }),
+  head: () => ({ meta: [{ title: "Quản lý người dùng · ExamForge" }] }),
   component: UsersPage,
 });
 
@@ -138,9 +138,9 @@ function UsersPage() {
 
   return (
     <AppLayout
-      breadcrumbs={[{ label: "Administration" }, { label: "Users" }]}
-      title="User management"
-      description="Invite users, assign roles, and manage permissions across the current tenant."
+      breadcrumbs={[{ label: "Quản trị" }, { label: "Người dùng" }]}
+      title="Quản lý người dùng"
+      description="Mời người dùng, gán vai trò và quản lý quyền trong tenant hiện tại."
       actions={
         <>
           {canCreateUsers && (
@@ -192,13 +192,13 @@ function UsersPage() {
                 <Input
                   value={userSearch}
                   onChange={(event) => setUserSearch(event.target.value)}
-                  placeholder="Search users…"
+                  placeholder="Tìm người dùng…"
                   className="pl-8 h-9"
                 />
               </div>
             </div>
-            {loading ? (
-              <div className="p-6 text-sm text-muted-foreground">Loading users from BE...</div>
+          {loading ? (
+              <div className="p-6 text-sm text-muted-foreground">Đang tải người dùng từ BE...</div>
             ) : error ? (
               <div className="p-6 text-sm text-destructive">
                 Không tải được dữ liệu users/roles/permissions từ BE.
@@ -214,10 +214,10 @@ function UsersPage() {
                     <th className="w-10 px-4 py-2.5">
                       <Checkbox />
                     </th>
-                    <th className="text-left px-4 py-2.5 font-medium">User</th>
-                    <th className="text-left px-4 py-2.5 font-medium">Role</th>
-                    <th className="text-left px-4 py-2.5 font-medium">Status</th>
-                    <th className="text-left px-4 py-2.5 font-medium">Created at</th>
+                    <th className="text-left px-4 py-2.5 font-medium">Người dùng</th>
+                    <th className="text-left px-4 py-2.5 font-medium">Vai trò</th>
+                    <th className="text-left px-4 py-2.5 font-medium">Trạng thái</th>
+                    <th className="text-left px-4 py-2.5 font-medium">Ngày tạo</th>
                     <th className="w-10"></th>
                   </tr>
                 </thead>
@@ -261,20 +261,20 @@ function UsersPage() {
                                 {extraRoles > 0 && <Badge variant="secondary">+{extraRoles}</Badge>}
                               </>
                             ) : (
-                              <span className="text-muted-foreground">No role</span>
+                              <span className="text-muted-foreground">Chưa có vai trò</span>
                             )}
                           </div>
                         </td>
                         <td className="px-4 py-3">
                           <Badge
                             variant="outline"
-                            className={
-                              user.is_active
-                                ? "bg-success/15 text-success border-success/30"
-                                : "bg-destructive/10 text-destructive border-destructive/30"
-                            }
-                          >
-                            {user.is_active ? "Active" : "Inactive"}
+                          className={
+                            user.is_active
+                              ? "bg-success/15 text-success border-success/30"
+                              : "bg-destructive/10 text-destructive border-destructive/30"
+                          }
+                        >
+                            {user.is_active ? "Hoạt động" : "Không hoạt động"}
                           </Badge>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
@@ -309,22 +309,22 @@ function UsersPage() {
                         allUsers.filter((user) => user.roles.some((item) => item.id === role.id))
                           .length
                       }{" "}
-                      users
+                      người dùng
                     </div>
                   </div>
                 </div>
                 <div className="mt-3 flex items-center gap-2">
                   <Badge variant="outline" className={isGlobalRole(role) ? "bg-muted/40" : ""}>
-                    {isGlobalRole(role) ? "Global" : "Current tenant"}
+                    {isGlobalRole(role) ? "Toàn cục" : "Tenant hiện tại"}
                   </Badge>
                   {isGlobalRole(role) && (
                     <span className="text-xs text-muted-foreground">
-                      Read-only catalog role for assignment.
+                      Vai trò danh mục chỉ đọc để gán.
                     </span>
                   )}
                 </div>
                 <div className="mt-4 text-xs text-muted-foreground">
-                  {role.permissions.length} permissions granted
+                  Đã cấp {role.permissions.length} quyền
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1">
                   {role.permissions.slice(0, 4).map((permission) => (
@@ -347,9 +347,9 @@ function UsersPage() {
                   size="sm"
                   className="w-full mt-4"
                   disabled={isGlobalRole(role)}
-                  title={isGlobalRole(role) ? "Global roles are read-only." : "Edit role"}
+                  title={isGlobalRole(role) ? "Vai trò toàn cục chỉ đọc." : "Chỉnh sửa vai trò"}
                 >
-                  {isGlobalRole(role) ? "Read-only" : "Edit role"}
+                  {isGlobalRole(role) ? "Chỉ đọc" : "Chỉnh sửa"}
                 </Button>
               </Card>
             ))}
@@ -464,15 +464,15 @@ function UsersPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create student invitation</DialogTitle>
+            <DialogTitle>Tạo lời mời cho học viên</DialogTitle>
             <DialogDescription>
-              Generate a link for students to register with an invitation token.
+              Tạo liên kết để học viên đăng ký bằng mã lời mời.
             </DialogDescription>
           </DialogHeader>
 
           <form className="grid gap-4" onSubmit={handleCreateInvite}>
             <div className="grid gap-2">
-              <Label htmlFor="invite_email">Email by invitation</Label>
+              <Label htmlFor="invite_email">Email nhận lời mời</Label>
               <Input
                 id="invite_email"
                 value={inviteEmail}
@@ -481,7 +481,7 @@ function UsersPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="invite_days">Expires in days</Label>
+              <Label htmlFor="invite_days">Hết hạn sau số ngày</Label>
               <Input
                 id="invite_days"
                 type="number"
@@ -494,7 +494,7 @@ function UsersPage() {
             {inviteUrl && (
               <div className="rounded-md border bg-muted/30 p-3">
                 <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Invite URL
+                  URL lời mời
                 </div>
                 <div className="mt-2 flex items-center gap-2">
                   <code className="min-w-0 flex-1 rounded bg-background px-2 py-1 text-xs">
@@ -507,7 +507,7 @@ function UsersPage() {
                     className="h-8 w-8"
                     onClick={() => {
                       void navigator.clipboard.writeText(inviteUrl);
-                      toast.success("Invite link copied.");
+                      toast.success("Đã sao chép liên kết lời mời.");
                     }}
                   >
                     <Copy className="h-4 w-4" />
@@ -518,7 +518,7 @@ function UsersPage() {
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setInviteOpen(false)}>
-                Close
+                Đóng
               </Button>
               <Button
                 type="submit"
@@ -526,7 +526,7 @@ function UsersPage() {
                 disabled={isCreatingInvite}
               >
                 {isCreatingInvite && <Loader2 className="h-4 w-4 animate-spin" />}
-                Create invite
+                Tạo lời mời
               </Button>
             </DialogFooter>
           </form>

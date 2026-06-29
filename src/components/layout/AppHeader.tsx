@@ -40,8 +40,8 @@ export function AppHeader({ breadcrumbs = [] as { label: string; to?: string }[]
   const tenantName = context?.tenant?.name ?? "Current tenant";
   const showCreate = hasPermission(context, ["questions:create", "tests:create", "assignments:create"]);
 
-  const profileName = profile?.display_name ?? (meQuery.isLoading ? "Loading user..." : "Unknown user");
-  const profileEmail = profile?.email ?? (meQuery.isLoading ? "Fetching profile..." : "No email available");
+  const profileName = profile?.display_name ?? (meQuery.isLoading ? "Đang tải người dùng..." : "Người dùng chưa xác định");
+  const profileEmail = profile?.email ?? (meQuery.isLoading ? "Đang lấy hồ sơ..." : "Không có email");
   const profileInitials = getInitials(profile?.display_name, profile?.email);
 
   return (
@@ -55,7 +55,7 @@ export function AppHeader({ breadcrumbs = [] as { label: string; to?: string }[]
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-56">
-          <DropdownMenuLabel>Tenant context</DropdownMenuLabel>
+          <DropdownMenuLabel>Ngữ cảnh tenant</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem disabled>
             <Building2 className="mr-2 h-4 w-4" />
@@ -85,13 +85,13 @@ export function AppHeader({ breadcrumbs = [] as { label: string; to?: string }[]
       <div className="ml-auto flex items-center gap-2">
         <div className="relative hidden md:block">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search questions, tests, users…" className="pl-8 w-72 h-9 bg-muted/40" />
+          <Input placeholder="Tìm câu hỏi, bài kiểm tra, người dùng…" className="pl-8 w-72 h-9 bg-muted/40" />
           <kbd className="absolute right-2 top-1/2 -translate-y-1/2 hidden lg:inline-flex h-5 select-none items-center gap-1 rounded border bg-background px-1.5 font-mono text-[10px] font-medium text-muted-foreground">⌘K</kbd>
         </div>
 
         {showCreate && (
           <Button size="sm" className="h-9 bg-brand text-brand-foreground hover:bg-brand/90 gap-1.5 shadow-sm">
-            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Create</span>
+            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Tạo mới</span>
           </Button>
         )}
 
@@ -133,16 +133,16 @@ export function AppHeader({ breadcrumbs = [] as { label: string; to?: string }[]
                 Role: {context.roles.map((role) => role.name).join(", ")}
               </DropdownMenuItem>
             ) : null}
-            <DropdownMenuItem>Profile</DropdownMenuItem>
-            <DropdownMenuItem>Preferences</DropdownMenuItem>
-            <DropdownMenuItem>Keyboard shortcuts</DropdownMenuItem>
+            <DropdownMenuItem>Hồ sơ</DropdownMenuItem>
+            <DropdownMenuItem>Tùy chọn</DropdownMenuItem>
+            <DropdownMenuItem>Phím tắt</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onSelect={() => {
                 logoutMutation.mutate();
               }}
             >
-              {logoutMutation.isPending ? "Signing out..." : "Sign out"}
+              {logoutMutation.isPending ? "Đang đăng xuất..." : "Đăng xuất"}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

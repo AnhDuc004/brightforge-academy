@@ -72,7 +72,7 @@ import {
 } from "@/lib/assignments";
 
 export const Route = createFileRoute("/assignments")({
-  head: () => ({ meta: [{ title: "Assignments · ExamForge" }] }),
+  head: () => ({ meta: [{ title: "Phân công · ExamForge" }] }),
   component: AssignmentsPage,
 });
 
@@ -97,15 +97,15 @@ const initialForm = {
 
 const assignmentSchema = z
   .object({
-    test_id: z.string().trim().min(1, "Please select a test."),
+    test_id: z.string().trim().min(1, "Vui lòng chọn một bài kiểm tra."),
     mode: z.enum(["single", "multiple"]),
     assignee_id: z.string().trim().optional(),
     assignee_ids: z.array(z.string().trim().min(1)).default([]),
     due_at: z.string().trim().optional().nullable(),
     max_attempts: z.coerce
       .number()
-      .int("Max attempts must be an integer.")
-      .min(1, "Max attempts must be at least 1."),
+      .int("Số lần làm tối đa phải là số nguyên.")
+      .min(1, "Số lần làm tối đa phải ít nhất là 1."),
     access_type: z.enum(["account", "token"]),
     status: z.enum(["assigned", "started", "completed", "expired", "archived"]).optional(),
   })
@@ -114,7 +114,7 @@ const assignmentSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["assignee_id"],
-        message: "Please select an assignee.",
+        message: "Vui lòng chọn người được giao.",
       });
     }
 
@@ -122,7 +122,7 @@ const assignmentSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["assignee_ids"],
-        message: "Please select at least one assignee.",
+        message: "Vui lòng chọn ít nhất một người được giao.",
       });
     }
   });
@@ -162,43 +162,43 @@ function canLaunchAssignment(assignment: Assignment) {
 }
 
 function getAttemptActionLabel(assignment: Assignment) {
-  return assignment.status === "started" ? "Continue attempt" : "Start attempt";
+  return assignment.status === "started" ? "Tiếp tục bài làm" : "Bắt đầu bài làm";
 }
 
 function getStudentActionLabel(assignment: Assignment) {
   switch (assignment.status) {
     case "started":
-      return "Continue";
+      return "Tiếp tục";
     case "completed":
-      return "Submitted";
+      return "Đã nộp";
     case "expired":
-      return "Closed";
+      return "Đã đóng";
     case "archived":
-      return "Archived";
+      return "Đã lưu trữ";
     default:
-      return "Start";
+      return "Bắt đầu";
   }
 }
 
 function getStudentStatusLabel(assignment: Assignment) {
   switch (assignment.status) {
     case "assigned":
-      return "Ready";
+      return "Sẵn sàng";
     case "started":
-      return "In progress";
+      return "Đang làm";
     case "completed":
-      return "Completed";
+      return "Hoàn thành";
     case "expired":
-      return "Expired";
+      return "Hết hạn";
     case "archived":
-      return "Archived";
+      return "Đã lưu trữ";
     default:
       return assignment.status;
   }
 }
 
 function formatRelativeDueDate(value?: string | null) {
-  if (!value) return "No due date";
+  if (!value) return "Không có hạn nộp";
 
   const dueAt = new Date(value).getTime();
   if (Number.isNaN(dueAt)) return formatDateTimeForDisplay(value);
@@ -207,14 +207,14 @@ function formatRelativeDueDate(value?: string | null) {
   const diffMinutes = Math.round(diffMs / 60000);
   const absMinutes = Math.abs(diffMinutes);
 
-  if (absMinutes < 1) return diffMs >= 0 ? "Due now" : "Just missed";
-  if (absMinutes < 60) return diffMs >= 0 ? `Due in ${absMinutes}m` : `Overdue by ${absMinutes}m`;
+  if (absMinutes < 1) return diffMs >= 0 ? "Đến hạn ngay" : "Vừa quá hạn";
+  if (absMinutes < 60) return diffMs >= 0 ? `Còn ${absMinutes} phút` : `Quá hạn ${absMinutes} phút`;
 
   const hours = Math.round(absMinutes / 60);
-  if (hours < 24) return diffMs >= 0 ? `Due in ${hours}h` : `Overdue by ${hours}h`;
+  if (hours < 24) return diffMs >= 0 ? `Còn ${hours} giờ` : `Quá hạn ${hours} giờ`;
 
   const days = Math.round(hours / 24);
-  return diffMs >= 0 ? `Due in ${days}d` : `Overdue by ${days}d`;
+  return diffMs >= 0 ? `Còn ${days} ngày` : `Quá hạn ${days} ngày`;
 }
 
 function formatDateTimeForInput(value?: string | null) {
@@ -228,7 +228,7 @@ function formatDateTimeForApi(value: string) {
 }
 
 function formatDateTimeForDisplay(value?: string | null) {
-  if (!value) return "No due date";
+  if (!value) return "Không có hạn nộp";
   return value.replace("T", " ").slice(0, 19);
 }
 
@@ -332,7 +332,7 @@ function AssignmentDetailView({
               <FileStack className="h-5 w-5 text-foreground" />
             </div>
             <div className="min-w-0">
-              <div className="text-xs uppercase tracking-wider text-muted-foreground">Test</div>
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">Bài kiểm tra</div>
               <h3 className="mt-1 truncate text-base font-semibold">{getTestLabel(assignment)}</h3>
               <div className="mt-1 font-mono text-[11px] text-muted-foreground">
                 {assignment.test_id}
@@ -342,11 +342,11 @@ function AssignmentDetailView({
         </Card>
 
         <Card className="p-4">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground">Result</div>
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">Kết quả</div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-2xl font-semibold">{score == null ? "—" : score}</span>
             <span className="text-xs text-muted-foreground">
-              {isFinalized ? "finalized" : "not finalized"}
+              {isFinalized ? "đã chốt" : "chưa chốt"}
             </span>
           </div>
           {isPassed != null && (
@@ -358,7 +358,7 @@ function AssignmentDetailView({
                   : "mt-2 border-destructive/30 bg-destructive/10 text-destructive"
               }
             >
-              {isPassed ? "Passed" : "Failed"}
+              {isPassed ? "Đạt" : "Không đạt"}
             </Badge>
           )}
         </Card>
@@ -368,52 +368,52 @@ function AssignmentDetailView({
         <Card className="p-4">
           <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
             <User className="h-4 w-4 text-brand" />
-            Assignee
+            Người được giao
           </div>
-          <DetailRow label="Name" value={getAssigneeLabel(assignment)} />
-          <DetailRow label="Assignee ID" value={assignment.assignee_id} mono />
-          <DetailRow label="Assigned by" value={getAssignedByLabel(assignment)} />
+          <DetailRow label="Tên" value={getAssigneeLabel(assignment)} />
+          <DetailRow label="ID người được giao" value={assignment.assignee_id} mono />
+          <DetailRow label="Được giao bởi" value={getAssignedByLabel(assignment)} />
         </Card>
 
         <Card className="p-4">
           <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
             <Key className="h-4 w-4 text-brand" />
-            Access & lifecycle
+            Truy cập và vòng đời
           </div>
           <DetailRow
-            label="Status"
+            label="Trạng thái"
             value={
               <Badge variant="outline" className={statusTone(assignment.status)}>
                 {assignment.status}
               </Badge>
             }
           />
-          <DetailRow label="Due at" value={formatDateTimeForDisplay(assignment.due_at)} />
-          <DetailRow label="Access type" value={assignment.access_type} />
-          <DetailRow label="Max attempts" value={String(assignment.max_attempts)} />
+          <DetailRow label="Hạn nộp" value={formatDateTimeForDisplay(assignment.due_at)} />
+          <DetailRow label="Kiểu truy cập" value={assignment.access_type} />
+          <DetailRow label="Số lần làm tối đa" value={String(assignment.max_attempts)} />
         </Card>
       </div>
 
       <Card className="p-4">
         <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
           <Trophy className="h-4 w-4 text-brand" />
-          Attempts and scores
+          Lần làm và điểm số
         </div>
         {attempts.length === 0 ? (
           <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
-            No attempt score was returned by the assignment detail API yet.
+            API chi tiết phân công chưa trả về điểm của lần làm nào.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-xs uppercase tracking-wider text-muted-foreground">
                 <tr>
-                  <th className="py-2 text-left font-medium">Attempt</th>
-                  <th className="py-2 text-left font-medium">Status</th>
-                  <th className="py-2 text-left font-medium">Submitted</th>
-                  <th className="py-2 text-left font-medium">Auto</th>
-                  <th className="py-2 text-left font-medium">Manual</th>
-                  <th className="py-2 text-left font-medium">Total</th>
+                  <th className="py-2 text-left font-medium">Lần làm</th>
+                  <th className="py-2 text-left font-medium">Trạng thái</th>
+                  <th className="py-2 text-left font-medium">Đã nộp</th>
+                  <th className="py-2 text-left font-medium">Tự động</th>
+                  <th className="py-2 text-left font-medium">Thủ công</th>
+                  <th className="py-2 text-left font-medium">Tổng</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -445,12 +445,12 @@ function AssignmentDetailView({
         )}
         {canReview && (
           <Button asChild variant="outline">
-            <Link to="/grading">Open grading</Link>
+            <Link to="/grading">Mở chấm điểm</Link>
           </Button>
         )}
         {canViewReports && (
           <Button asChild variant="outline">
-            <Link to="/results">Open reports</Link>
+            <Link to="/results">Mở báo cáo</Link>
           </Button>
         )}
       </div>
@@ -617,13 +617,13 @@ function StudentAssignmentsView({
 
   return (
     <AppLayout
-      breadcrumbs={[{ label: "Assignments" }, { label: "My work" }]}
-      title="Student home"
-      description="Your tests, progress, and next action in one focused workspace."
+      breadcrumbs={[{ label: "Phân công" }, { label: "Việc của tôi" }]}
+      title="Trang học viên"
+      description="Bài kiểm tra, tiến độ và hành động tiếp theo của bạn trong một không gian làm việc tập trung."
       actions={
         <Button variant="outline" size="sm" onClick={onRefresh} disabled={isLoading}>
           <RefreshCw className={`mr-1.5 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-          Refresh
+          Làm mới
         </Button>
       }
     >
@@ -632,21 +632,21 @@ function StudentAssignmentsView({
           <div className="flex h-full flex-col gap-6 p-6 sm:p-8">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-white/80 backdrop-blur">
               <GraduationCap className="h-3.5 w-3.5 text-brand" />
-              Student home
+              Trang học viên
             </div>
             <div className="max-w-2xl">
               <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-                A clean, exam-first home for everything you need to do next.
+                Một trang gọn gàng, ưu tiên bài kiểm tra cho mọi việc bạn cần làm tiếp theo.
               </h2>
               <p className="mt-3 max-w-xl text-sm leading-6 text-white/70">
-                Continue active work, jump into new tests, and keep completed items out of the way.
+                Tiếp tục bài đang làm, vào bài kiểm tra mới và giữ các mục đã hoàn thành gọn ở bên dưới.
               </p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
-              <MetricCard label="Ready now" value={counts.active} />
-              <MetricCard label="Due soon" value={counts.dueSoon} />
-              <MetricCard label="Completed" value={counts.completed} />
+              <MetricCard label="Sẵn sàng" value={counts.active} />
+              <MetricCard label="Sắp đến hạn" value={counts.dueSoon} />
+              <MetricCard label="Hoàn thành" value={counts.completed} />
             </div>
 
             {featuredAssignment && (
@@ -654,7 +654,7 @@ function StudentAssignmentsView({
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="min-w-0">
                     <div className="text-[11px] uppercase tracking-[0.24em] text-white/55">
-                      Continue now
+                      Tiếp tục ngay
                     </div>
                     <h3 className="mt-1 truncate text-xl font-semibold">
                       {getTestLabel(featuredAssignment)}
@@ -668,7 +668,7 @@ function StudentAssignmentsView({
                     onClick={() => onStartAttempt(featuredAssignment)}
                   >
                     <PlayCircle className="mr-1.5 h-4 w-4" />
-                    Resume
+                    Tiếp tục
                   </Button>
                 </div>
               </div>
@@ -683,16 +683,16 @@ function StudentAssignmentsView({
                 <Trophy className="h-4.5 w-4.5" />
               </div>
               <div>
-                <div className="text-sm font-semibold">Your flow</div>
-                <div className="text-xs text-muted-foreground">Simple, exam-first navigation</div>
+              <div className="text-sm font-semibold">Quy trình của bạn</div>
+                <div className="text-xs text-muted-foreground">Điều hướng đơn giản, ưu tiên bài kiểm tra</div>
               </div>
             </div>
 
             <ol className="mt-4 space-y-3 text-sm">
               {[
-                "Open a card to continue or start.",
-                "Keep due work visible at the top.",
-                "Completed tests stay grouped below.",
+                "Mở một thẻ để tiếp tục hoặc bắt đầu.",
+                "Giữ các việc sắp đến hạn hiển thị ở phía trên.",
+                "Các bài đã hoàn thành sẽ được nhóm ở bên dưới.",
               ].map((item, index) => (
                 <li key={item} className="flex gap-3 rounded-md border bg-muted/20 p-3">
                   <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand/15 text-xs font-semibold">
@@ -705,14 +705,14 @@ function StudentAssignmentsView({
           </Card>
 
           <Card className="border-dashed p-5">
-            <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">Overview</div>
+              <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">Tổng quan</div>
             <div className="mt-3 grid gap-3">
               <div className="rounded-2xl border bg-muted/20 p-3">
-                <div className="text-sm font-medium">Assignments visible</div>
+                <div className="text-sm font-medium">Phân công đang hiển thị</div>
                 <div className="mt-1 text-2xl font-semibold">{filteredAssignments.length}</div>
               </div>
               <div className="rounded-2xl border bg-muted/20 p-3">
-                <div className="text-sm font-medium">Page</div>
+                <div className="text-sm font-medium">Trang</div>
                 <div className="mt-1 text-2xl font-semibold">
                   {page}/{lastPage}
                 </div>
@@ -728,18 +728,18 @@ function StudentAssignmentsView({
           <Input
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search tests, status, or due dates..."
+            placeholder="Tìm bài kiểm tra, trạng thái hoặc hạn nộp..."
             className="h-11 pl-9"
           />
         </div>
         <div className="flex flex-wrap gap-2">
           {[
-            { key: "all", label: "All", count: assignments.length },
-            { key: "active", label: "Active", count: counts.active },
-            { key: "completed", label: "Completed", count: counts.completed },
+            { key: "all", label: "Tất cả", count: assignments.length },
+            { key: "active", label: "Đang hoạt động", count: counts.active },
+            { key: "completed", label: "Hoàn thành", count: counts.completed },
             {
               key: "closed",
-              label: "Closed",
+              label: "Đã đóng",
               count: assignments.filter((assignment) => assignment.status === "expired" || assignment.status === "archived").length,
             },
           ].map((item) => (
@@ -777,13 +777,13 @@ function StudentAssignmentsView({
           </div>
           <h3 className="mt-4 text-lg font-semibold">
             {searchTerm.trim() || statusFilter !== "all"
-              ? "No matching assignments"
-              : "No assignments yet"}
+              ? "Không có phân công phù hợp"
+              : "Chưa có phân công nào"}
           </h3>
           <p className="mt-2 text-sm text-muted-foreground">
             {searchTerm.trim() || statusFilter !== "all"
-              ? "Try a different keyword or clear the filters."
-              : "When your teacher assigns a test, it will appear here."}
+              ? "Hãy thử từ khóa khác hoặc xóa bộ lọc."
+              : "Khi giáo viên giao bài kiểm tra, nó sẽ xuất hiện ở đây."}
           </p>
         </Card>
       ) : (
@@ -792,7 +792,7 @@ function StudentAssignmentsView({
             <section className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                  Continue or start
+                  Tiếp tục hoặc bắt đầu
                 </h3>
                 <Badge variant="secondary">{visibleActiveAssignments.length}</Badge>
               </div>
@@ -811,7 +811,7 @@ function StudentAssignmentsView({
             <section className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                  Completed
+                  Đã hoàn thành
                 </h3>
                 <Badge variant="secondary">{visibleCompletedAssignments.length}</Badge>
               </div>
@@ -830,7 +830,7 @@ function StudentAssignmentsView({
             <section className="space-y-3 xl:col-span-2">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                  Closed
+                  Đã đóng
                 </h3>
                 <Badge variant="secondary">{visibleClosedAssignments.length}</Badge>
               </div>
@@ -900,18 +900,18 @@ function StudentAssignmentCard({
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <InfoChip label="Attempts" value={String(assignment.current_attempts ?? 0)} />
-        <InfoChip label="Max attempts" value={String(assignment.max_attempts)} />
-        <InfoChip label="Access" value={assignment.access_type} />
+        <InfoChip label="Lần làm" value={String(assignment.current_attempts ?? 0)} />
+        <InfoChip label="Số lần tối đa" value={String(assignment.max_attempts)} />
+        <InfoChip label="Truy cập" value={assignment.access_type} />
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
         <div className="text-xs text-muted-foreground">
           {canStart
-            ? "Open the exam when you are ready."
+            ? "Mở bài kiểm tra khi bạn sẵn sàng."
             : assignment.status === "completed"
-              ? "This assignment is already completed."
-              : "This assignment is no longer active."}
+              ? "Phân công này đã hoàn thành."
+              : "Phân công này không còn hoạt động."}
         </div>
         <Button
           className="bg-brand text-brand-foreground hover:bg-brand/90"
@@ -1112,7 +1112,7 @@ function AssignmentsPage() {
           ...payload,
           status: form.status,
         });
-        toast.success("Assignment updated successfully.");
+        toast.success("Đã cập nhật phân công thành công.");
         setFormOpen(false);
       } else {
         const result = await createAssignment(payload);
@@ -1121,9 +1121,9 @@ function AssignmentsPage() {
           Object.keys(result.access_tokens).length > 0 ? result.access_tokens : null,
         );
         if (result.assignments.length > 1) {
-          toast.success(`Created ${result.assignments.length} assignments successfully.`);
+          toast.success(`Đã tạo thành công ${result.assignments.length} phân công.`);
         } else {
-          toast.success("Assignment created successfully.");
+          toast.success("Đã tạo phân công thành công.");
         }
       }
 
@@ -1137,12 +1137,12 @@ function AssignmentsPage() {
   }
 
   async function handleDelete(assignment: Assignment) {
-    const confirmed = window.confirm(`Delete assignment ${assignment.id}?`);
+    const confirmed = window.confirm(`Xóa phân công ${assignment.id}?`);
     if (!confirmed) return;
 
     try {
       await deleteAssignment(assignment.id);
-      toast.success("Assignment deleted.");
+      toast.success("Đã xóa phân công.");
       await loadAssignments(page, appliedAssigneeFilter);
     } catch (error) {
       toast.error(parseApiError(error).message);
@@ -1152,7 +1152,7 @@ function AssignmentsPage() {
   async function handleArchive(assignment: Assignment) {
     try {
       await updateAssignment(assignment.id, { status: "archived" });
-      toast.success("Assignment archived.");
+      toast.success("Đã lưu trữ phân công.");
       await loadAssignments(page, appliedAssigneeFilter);
     } catch (error) {
       toast.error(parseApiError(error).message);
@@ -1167,7 +1167,7 @@ function AssignmentsPage() {
           ? String((attempt as { id: unknown }).id)
           : "";
 
-      toast.success(assignment.status === "started" ? "Attempt resumed." : "Attempt started.");
+      toast.success(assignment.status === "started" ? "Đã tiếp tục lần làm." : "Đã bắt đầu lần làm.");
       await loadAssignments(page, appliedAssigneeFilter);
       navigate({
         to: "/exam",
@@ -1215,7 +1215,7 @@ function AssignmentsPage() {
           2,
         ),
       );
-      toast.success("Access token verified.");
+      toast.success("Đã xác thực mã truy cập.");
     } catch (error) {
       toast.error(parseApiError(error).message);
     } finally {
@@ -1250,45 +1250,45 @@ function AssignmentsPage() {
 
   return (
     <AppLayout
-      breadcrumbs={[{ label: "Assignments" }, { label: "Active" }]}
-      title={canManageAssignments ? "Assignments" : canViewAssignments ? "My assignments" : "Assignments"}
+      breadcrumbs={[{ label: "Phân công" }, { label: "Đang hoạt động" }]}
+      title={canManageAssignments ? "Phân công" : canViewAssignments ? "Phân công của tôi" : "Phân công"}
       description={
         canManageAssignments
-          ? "Distribute published tests to students, manage lifecycle status, and verify assignment access tokens."
-          : "Open assigned tests, continue in-progress attempts, or verify a token-based assignment."
+          ? "Phân phối bài kiểm tra đã xuất bản cho học viên, quản lý trạng thái vòng đời và xác thực mã truy cập."
+          : "Mở bài kiểm tra đã được giao, tiếp tục lần làm dang dở hoặc xác thực phân công dùng mã token."
       }
       actions={
         canManageAssignments ? (
           <>
             <Button variant="outline" size="sm" onClick={() => setVerifyOpen(true)}>
-              <Key className="mr-1.5 h-4 w-4" /> Verify token
+              <Key className="mr-1.5 h-4 w-4" /> Xác thực token
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => loadAssignments(page, appliedAssigneeFilter)}
             >
-              <RefreshCw className="mr-1.5 h-4 w-4" /> Refresh
+              <RefreshCw className="mr-1.5 h-4 w-4" /> Làm mới
             </Button>
             <Button
               size="sm"
               className="bg-brand text-brand-foreground hover:bg-brand/90"
               onClick={openCreateDialog}
             >
-              <Plus className="mr-1.5 h-4 w-4" /> Assign test
+              <Plus className="mr-1.5 h-4 w-4" /> Giao bài kiểm tra
             </Button>
           </>
         ) : (
           <>
             <Button variant="outline" size="sm" onClick={() => setVerifyOpen(true)}>
-              <Key className="mr-1.5 h-4 w-4" /> Verify token
+              <Key className="mr-1.5 h-4 w-4" /> Xác thực token
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => loadAssignments(page, appliedAssigneeFilter)}
             >
-              <RefreshCw className="mr-1.5 h-4 w-4" /> Refresh
+              <RefreshCw className="mr-1.5 h-4 w-4" /> Làm mới
             </Button>
           </>
         )
@@ -1314,12 +1314,12 @@ function AssignmentsPage() {
               <Input
                 value={assigneeFilter}
                 onChange={(event) => setAssigneeFilter(event.target.value)}
-                placeholder="Filter by assignee ID"
+                placeholder="Lọc theo ID người được giao"
                 className="h-9 pl-8"
               />
             </div>
             <Button type="submit" variant="outline" size="sm">
-              Apply
+              Áp dụng
             </Button>
             {appliedAssigneeFilter && (
               <Button
@@ -1332,7 +1332,7 @@ function AssignmentsPage() {
                   void loadAssignments(1, "");
                 }}
               >
-                Clear
+                Xóa bộ lọc
               </Button>
             )}
           </form>
@@ -1342,12 +1342,12 @@ function AssignmentsPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="px-4 py-2.5 text-left font-medium">Test</th>
-                <th className="px-4 py-2.5 text-left font-medium">Assignee</th>
-                <th className="px-4 py-2.5 text-left font-medium">Due date</th>
-                <th className="px-4 py-2.5 text-left font-medium">Access</th>
-                <th className="px-4 py-2.5 text-left font-medium">Attempts</th>
-                <th className="px-4 py-2.5 text-left font-medium">Status</th>
+                <th className="px-4 py-2.5 text-left font-medium">Bài kiểm tra</th>
+                <th className="px-4 py-2.5 text-left font-medium">Người được giao</th>
+                <th className="px-4 py-2.5 text-left font-medium">Hạn nộp</th>
+                <th className="px-4 py-2.5 text-left font-medium">Truy cập</th>
+                <th className="px-4 py-2.5 text-left font-medium">Lần làm</th>
+                <th className="px-4 py-2.5 text-left font-medium">Trạng thái</th>
                 <th className="w-10"></th>
               </tr>
             </thead>
@@ -1356,13 +1356,13 @@ function AssignmentsPage() {
                 <tr>
                   <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
                     <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />
-                    Loading assignments...
+                    Đang tải phân công...
                   </td>
                 </tr>
               ) : assignments.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
-                    No assignments found.
+                    Không tìm thấy phân công nào.
                   </td>
                 </tr>
               ) : (
@@ -1405,7 +1405,7 @@ function AssignmentsPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => void handleView(assignment)}>
-                            <Eye className="h-4 w-4" /> View details
+                            <Eye className="h-4 w-4" /> Xem chi tiết
                           </DropdownMenuItem>
                           {!canManageAssignments && canLaunchAssignment(assignment) && (
                             <DropdownMenuItem onClick={() => void handleStartAttempt(assignment)}>
@@ -1415,17 +1415,17 @@ function AssignmentsPage() {
                           {canManageAssignments && (
                             <>
                               <DropdownMenuItem onClick={() => openEditDialog(assignment)}>
-                                <Pencil className="h-4 w-4" /> Edit
+                                <Pencil className="h-4 w-4" /> Chỉnh sửa
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => void handleArchive(assignment)}>
-                                <Archive className="h-4 w-4" /> Archive
+                                <Archive className="h-4 w-4" /> Lưu trữ
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 className="text-destructive focus:text-destructive"
                                 onClick={() => void handleDelete(assignment)}
                               >
-                                <Trash2 className="h-4 w-4" /> Delete
+                                <Trash2 className="h-4 w-4" /> Xóa
                               </DropdownMenuItem>
                             </>
                           )}
@@ -1441,7 +1441,7 @@ function AssignmentsPage() {
 
         <div className="flex items-center justify-between border-t px-4 py-3 text-xs text-muted-foreground">
           <span>
-            Page {page} of {lastPage} · {total} total
+            Trang {page} / {lastPage} · {total} tổng
           </span>
           <div className="flex gap-1">
             <Button
@@ -1451,7 +1451,7 @@ function AssignmentsPage() {
               disabled={isLoading || page <= 1}
               onClick={() => void loadAssignments(page - 1, appliedAssigneeFilter)}
             >
-              Previous
+            Trước
             </Button>
             <Button
               variant="outline"
@@ -1460,16 +1460,16 @@ function AssignmentsPage() {
               disabled={isLoading || page >= lastPage}
               onClick={() => void loadAssignments(page + 1, appliedAssigneeFilter)}
             >
-              Next
+            Sau
             </Button>
           </div>
         </div>
       </Card>
 
       <div className="mt-3 text-center text-xs text-muted-foreground">
-        Need to take an exam?{" "}
+        Cần làm bài kiểm tra?{" "}
         <Link to="/exam" search={{ attemptId: undefined }} className="font-medium underline">
-          Open the exam-taking demo →
+          Mở bản demo làm bài kiểm tra →
         </Link>
       </div>
 
@@ -1482,17 +1482,17 @@ function AssignmentsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingAssignment ? "Edit assignment" : "Assign test"}</DialogTitle>
+            <DialogTitle>{editingAssignment ? "Chỉnh sửa phân công" : "Giao bài kiểm tra"}</DialogTitle>
             <DialogDescription>
               {editingAssignment
-                ? "Update assignment settings and lifecycle status."
-                : "Create an assignment for a user and generate an access token if access type is token."}
+                ? "Cập nhật cài đặt phân công và trạng thái vòng đời."
+                : "Tạo phân công cho một người dùng và tạo mã truy cập nếu kiểu truy cập là token."}
             </DialogDescription>
           </DialogHeader>
 
           <form className="grid gap-4" onSubmit={handleSubmit}>
             <div className="grid gap-2">
-              <Label>Assignment mode</Label>
+              <Label>Chế độ phân công</Label>
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   type="button"
@@ -1509,7 +1509,7 @@ function AssignmentsPage() {
                     }));
                   }}
                 >
-                  One student
+                  Một học viên
                 </Button>
                 <Button
                   type="button"
@@ -1528,17 +1528,17 @@ function AssignmentsPage() {
                     }));
                   }}
                 >
-                  Multiple students
+                  Nhiều học viên
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Chọn một học sinh để dùng `assignee_id`, hoặc chọn nhiều học sinh để gửi
+                Chọn một học viên để dùng `assignee_id`, hoặc chọn nhiều học viên để gửi
                 `assignee_ids[]`.
               </p>
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="test_id">Test</Label>
+              <Label htmlFor="test_id">Bài kiểm tra</Label>
               <Select
                 value={form.test_id}
                 onValueChange={(value) => {
@@ -1550,7 +1550,7 @@ function AssignmentsPage() {
                   id="test_id"
                   className={formErrors.test_id ? "border-destructive focus:ring-destructive" : ""}
                 >
-                  <SelectValue placeholder="Select a published test" />
+                  <SelectValue placeholder="Chọn một bài kiểm tra đã xuất bản" />
                 </SelectTrigger>
                 <SelectContent>
                   {tests.map((test: TestResource) => (
@@ -1566,30 +1566,30 @@ function AssignmentsPage() {
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="student_search">Selectable students</Label>
+              <Label htmlFor="student_search">Học viên có thể chọn</Label>
               <Input
                 id="student_search"
                 value={studentSearch}
                 onChange={(event) => setStudentSearch(event.target.value)}
-                placeholder="Search by email or display name..."
+                placeholder="Tìm theo email hoặc tên hiển thị..."
               />
               <p className="text-xs text-muted-foreground">
                 {studentsQuery.isFetching
-                  ? "Đang tải danh sách học sinh..."
+                  ? "Đang tải danh sách học viên..."
                   : studentTotal > 0
-                    ? `Tìm thấy ${studentTotal} học sinh phù hợp.`
-                    : "Không có học sinh phù hợp."}
+                    ? `Tìm thấy ${studentTotal} học viên phù hợp.`
+                    : "Không có học viên phù hợp."}
               </p>
             </div>
 
             {form.mode === "single" ? (
               <div className="grid gap-2">
-                <Label>Assignee</Label>
+                <Label>Người được giao</Label>
                 <div className="max-h-64 overflow-auto rounded-md border p-3">
                   <div className="grid gap-2">
                     {students.length === 0 ? (
                       <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-                        Không có học sinh phù hợp
+                        Không có học viên phù hợp
                       </div>
                     ) : (
                       students.map((student: UserResource) => {
@@ -1627,7 +1627,7 @@ function AssignmentsPage() {
                 </div>
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>
-                    Page {studentPage} of {studentLastPage}
+                    Trang {studentPage} / {studentLastPage}
                   </span>
                   <div className="flex gap-1">
                     <Button
@@ -1638,7 +1638,7 @@ function AssignmentsPage() {
                       disabled={studentPage <= 1 || studentsQuery.isFetching}
                       onClick={() => setStudentPage((current) => Math.max(1, current - 1))}
                     >
-                      Previous
+                      Trước
                     </Button>
                     <Button
                       type="button"
@@ -1648,7 +1648,7 @@ function AssignmentsPage() {
                       disabled={studentPage >= studentLastPage || studentsQuery.isFetching}
                       onClick={() => setStudentPage((current) => current + 1)}
                     >
-                      Next
+                      Sau
                     </Button>
                   </div>
                 </div>
@@ -1658,12 +1658,12 @@ function AssignmentsPage() {
               </div>
             ) : (
               <div className="grid gap-2">
-                <Label>Assignees</Label>
+                <Label>Những người được giao</Label>
                 <div className="max-h-64 overflow-auto rounded-md border p-3">
                   <div className="grid gap-2">
                     {students.length === 0 ? (
                       <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-                        Không có học sinh phù hợp
+                        Không có học viên phù hợp
                       </div>
                     ) : (
                       students.map((student: UserResource) => {
@@ -1699,7 +1699,7 @@ function AssignmentsPage() {
                 </div>
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>
-                    Page {studentPage} of {studentLastPage}
+                    Trang {studentPage} / {studentLastPage}
                   </span>
                   <div className="flex gap-1">
                     <Button
@@ -1710,7 +1710,7 @@ function AssignmentsPage() {
                       disabled={studentPage <= 1 || studentsQuery.isFetching}
                       onClick={() => setStudentPage((current) => Math.max(1, current - 1))}
                     >
-                      Previous
+                      Trước
                     </Button>
                     <Button
                       type="button"
@@ -1720,7 +1720,7 @@ function AssignmentsPage() {
                       disabled={studentPage >= studentLastPage || studentsQuery.isFetching}
                       onClick={() => setStudentPage((current) => current + 1)}
                     >
-                      Next
+                      Sau
                     </Button>
                   </div>
                 </div>
@@ -1732,7 +1732,7 @@ function AssignmentsPage() {
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
-                <Label htmlFor="due_at">Due at</Label>
+                <Label htmlFor="due_at">Hạn nộp</Label>
                 <Input
                   id="due_at"
                   type="datetime-local"
@@ -1750,7 +1750,7 @@ function AssignmentsPage() {
                 )}
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="max_attempts">Max attempts</Label>
+                <Label htmlFor="max_attempts">Số lần làm tối đa</Label>
                 <Input
                   id="max_attempts"
                   type="number"
@@ -1774,7 +1774,7 @@ function AssignmentsPage() {
             </div>
 
             <div className="grid gap-2">
-              <Label>Access type</Label>
+              <Label>Kiểu truy cập</Label>
               <Select
                 value={form.access_type}
                 onValueChange={(value) => {
@@ -1794,7 +1794,7 @@ function AssignmentsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="token">token</SelectItem>
-                  <SelectItem value="account">account</SelectItem>
+                  <SelectItem value="account">tài khoản</SelectItem>
                 </SelectContent>
               </Select>
               {formErrors.access_type && (
@@ -1804,7 +1804,7 @@ function AssignmentsPage() {
 
             {editingAssignment && (
               <div className="grid gap-2">
-                <Label>Status</Label>
+                <Label>Trạng thái</Label>
                 <Select
                   value={form.status}
                   onValueChange={(value) => {
@@ -1834,7 +1834,7 @@ function AssignmentsPage() {
             {(createdToken || createdTokens) && form.access_type === "token" && (
               <div className="rounded-md border bg-muted/40 p-3">
                 <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Access token
+                  Mã truy cập
                 </div>
                 {createdTokens ? (
                   <div className="mt-2 grid gap-2">
@@ -1851,7 +1851,7 @@ function AssignmentsPage() {
                           className="h-8 w-8"
                           onClick={() => {
                             void navigator.clipboard.writeText(token);
-                            toast.success("Token copied.");
+                            toast.success("Đã sao chép token.");
                           }}
                         >
                           <Clipboard className="h-4 w-4" />
@@ -1871,7 +1871,7 @@ function AssignmentsPage() {
                       className="h-8 w-8"
                       onClick={() => {
                         void navigator.clipboard.writeText(createdToken ?? "");
-                        toast.success("Token copied.");
+                        toast.success("Đã sao chép token.");
                       }}
                     >
                       <Clipboard className="h-4 w-4" />
@@ -1882,18 +1882,18 @@ function AssignmentsPage() {
             )}
 
             <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
-              <div className="font-medium text-foreground">Selected values</div>
-              <div className="mt-1">Test: {selectedTest?.title ?? "—"}</div>
+              <div className="font-medium text-foreground">Giá trị đã chọn</div>
+              <div className="mt-1">Bài kiểm tra: {selectedTest?.title ?? "—"}</div>
               {form.mode === "single" ? (
                 <div>
-                  Assignee:{" "}
+                  Người được giao:{" "}
                   {selectedAssignee
                     ? `${selectedAssignee.display_name} (${selectedAssignee.email})`
                     : "—"}
                 </div>
               ) : (
                 <div>
-                  Assignees:{" "}
+                  Những người được giao:{" "}
                   {selectedAssignees.length > 0
                     ? selectedAssignees.map((user) => user.display_name).join(", ")
                     : "—"}
@@ -1903,7 +1903,7 @@ function AssignmentsPage() {
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setFormOpen(false)}>
-                Close
+                Đóng
               </Button>
               <Button
                 type="submit"
@@ -1911,7 +1911,7 @@ function AssignmentsPage() {
                 className="bg-brand text-brand-foreground hover:bg-brand/90"
               >
                 {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
-                {editingAssignment ? "Save changes" : "Create assignment"}
+                {editingAssignment ? "Lưu thay đổi" : "Tạo phân công"}
               </Button>
             </DialogFooter>
           </form>
@@ -1921,14 +1921,14 @@ function AssignmentsPage() {
       <Dialog open={verifyOpen} onOpenChange={setVerifyOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Verify access token</DialogTitle>
+            <DialogTitle>Xác thực mã truy cập</DialogTitle>
             <DialogDescription>
-              Check whether an assignment access token is valid and preview the linked assignment.
+              Kiểm tra mã truy cập phân công có hợp lệ không và xem trước phân công liên kết.
             </DialogDescription>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={handleVerify}>
             <div className="grid gap-2">
-              <Label htmlFor="access_token">Access token</Label>
+              <Label htmlFor="access_token">Mã truy cập</Label>
               <Input
                 id="access_token"
                 value={verifyToken}
@@ -1957,7 +1957,7 @@ function AssignmentsPage() {
             )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setVerifyOpen(false)}>
-                Close
+                Đóng
               </Button>
               {verifiedAssignment && canLaunchAssignment(verifiedAssignment) && (
                 <Button
@@ -1975,7 +1975,7 @@ function AssignmentsPage() {
                 className="bg-brand text-brand-foreground hover:bg-brand/90"
               >
                 {isVerifying && <Loader2 className="h-4 w-4 animate-spin" />}
-                Verify
+                Xác thực
               </Button>
             </DialogFooter>
           </form>
@@ -1985,9 +1985,9 @@ function AssignmentsPage() {
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Assignment details</DialogTitle>
+            <DialogTitle>Chi tiết phân công</DialogTitle>
             <DialogDescription>
-              Test, assignee, lifecycle, and available scoring information.
+              Thông tin bài kiểm tra, người được giao, vòng đời và điểm số hiện có.
             </DialogDescription>
           </DialogHeader>
           {selectedAssignment ? (
@@ -2001,7 +2001,7 @@ function AssignmentsPage() {
           ) : (
             <div className="py-8 text-center text-sm text-muted-foreground">
               <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />
-              Loading assignment...
+              Đang tải phân công...
             </div>
           )}
         </DialogContent>

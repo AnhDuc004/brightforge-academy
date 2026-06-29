@@ -10,7 +10,7 @@ import { deleteTest, getTest, publishTest, type TestResource } from "@/lib/tests
 import { parseApiError } from "@/lib/auth";
 
 export const Route = createFileRoute("/tests/$id")({
-  head: () => ({ meta: [{ title: "Test details · ExamForge" }] }),
+  head: () => ({ meta: [{ title: "Chi tiết bài kiểm tra · ExamForge" }] }),
   component: TestDetails,
 });
 
@@ -31,7 +31,7 @@ function TestDetails() {
   const publishMutation = useMutation({
     mutationFn: publishTest,
     onSuccess: async () => {
-      toast.success("Test published successfully.");
+      toast.success("Đã xuất bản bài kiểm tra thành công.");
       await queryClient.invalidateQueries({ queryKey: ["tests"] });
     },
     onError: (error) => {
@@ -42,7 +42,7 @@ function TestDetails() {
   const deleteMutation = useMutation({
     mutationFn: deleteTest,
     onSuccess: async () => {
-      toast.success("Test deleted successfully.");
+      toast.success("Đã xóa bài kiểm tra thành công.");
       await queryClient.invalidateQueries({ queryKey: ["tests"] });
     },
     onError: (error) => {
@@ -55,19 +55,19 @@ function TestDetails() {
 
   return (
     <AppLayout
-      breadcrumbs={[{ label: "Tests", to: "/tests" }, { label: test?.id ?? id }]}
-      title={test?.title ?? "Loading test..."}
+      breadcrumbs={[{ label: "Bài kiểm tra", to: "/tests" }, { label: test?.id ?? id }]}
+      title={test?.title ?? "Đang tải bài kiểm tra..."}
       description={
         isPublished
-          ? "Published exam · snapshot frozen. Revisions to source questions won't affect this test."
-          : "Draft exam · still editable. Add sections/questions before publishing."
+          ? "Bài kiểm tra đã xuất bản · ảnh chụp đã được cố định. Chỉnh sửa câu hỏi nguồn sẽ không ảnh hưởng đến bài kiểm tra này."
+          : "Bài kiểm tra bản nháp · vẫn có thể chỉnh sửa. Hãy thêm phần/câu hỏi trước khi xuất bản."
       }
       actions={
         <>
           {test && (
             <Link to="/tests/builder" search={{ testId: test.id }}>
               <Button variant="outline" size="sm">
-                <Pencil className="h-4 w-4 mr-1.5" /> Edit
+                <Pencil className="h-4 w-4 mr-1.5" /> Chỉnh sửa
               </Button>
             </Link>
           )}
@@ -80,7 +80,7 @@ function TestDetails() {
                 void publishMutation.mutateAsync(test.id);
               }}
             >
-              <Send className="h-4 w-4 mr-1.5" /> Publish
+              <Send className="h-4 w-4 mr-1.5" /> Xuất bản
             </Button>
           )}
           {test && !isPublished && (
@@ -97,30 +97,30 @@ function TestDetails() {
               ) : (
                 <Trash2 className="h-4 w-4" />
               )}
-              Delete draft
+              Xóa bản nháp
             </Button>
           )}
         </>
       }
     >
       {testQuery.isLoading ? (
-        <Card className="p-8 text-sm text-muted-foreground">Loading test details from BE...</Card>
+        <Card className="p-8 text-sm text-muted-foreground">Đang tải chi tiết bài kiểm tra từ BE...</Card>
       ) : testQuery.error || !test ? (
-        <Card className="p-8 text-sm text-destructive">Không tải được chi tiết test từ BE.</Card>
+        <Card className="p-8 text-sm text-destructive">Không tải được chi tiết bài kiểm tra từ BE.</Card>
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-            <KPI icon={Clock} label="Duration" value={`${Math.max(1, Math.round(test.duration_seconds / 60))} min`} />
-            <KPI icon={Target} label="Passing score" value={`${test.passing_score}%`} />
-            <KPI icon={FileText} label="Questions" value={String(totalQuestions(test))} />
-            <KPI icon={Users} label="Sections" value={String(test.sections.length)} />
+            <KPI icon={Clock} label="Thời lượng" value={`${Math.max(1, Math.round(test.duration_seconds / 60))} phút`} />
+            <KPI icon={Target} label="Điểm đạt" value={`${test.passing_score}%`} />
+            <KPI icon={FileText} label="Câu hỏi" value={String(totalQuestions(test))} />
+            <KPI icon={Users} label="Các phần" value={String(test.sections.length)} />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <Card className="lg:col-span-2 p-5">
-              <h3 className="font-semibold mb-1">Sections</h3>
+              <h3 className="font-semibold mb-1">Các phần</h3>
               <p className="text-xs text-muted-foreground mb-4">
-                {test.sections.length} sections · {totalQuestions(test)} questions · snapshot preserved in each section
+                {test.sections.length} phần · {totalQuestions(test)} câu hỏi · ảnh chụp được giữ trong từng phần
               </p>
               <div className="space-y-3">
                 {test.sections.map((section) => (
@@ -131,13 +131,13 @@ function TestDetails() {
                           {section.position}. {section.title}
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">
-                          {section.questions.length} questions
+                          {section.questions.length} câu hỏi
                           {section.instructions ? ` · ${section.instructions}` : ""}
                         </div>
                       </div>
                       <Badge variant="outline" className="font-mono text-[10px]">
                         <Lock className="h-3 w-3 mr-1" />
-                        Snapshot
+                        Ảnh chụp
                       </Badge>
                     </div>
 
@@ -157,7 +157,7 @@ function TestDetails() {
                                 <span>·</span>
                                 <span>{question.question_snapshot.type}</span>
                                 <span>·</span>
-                                <span>{question.score_override ?? question.question_snapshot.max_score} pts</span>
+                                <span>{question.score_override ?? question.question_snapshot.max_score} điểm</span>
                               </div>
                             </div>
                           </li>
@@ -171,31 +171,31 @@ function TestDetails() {
 
             <div className="space-y-4">
               <Card className="p-5">
-                <h3 className="font-semibold mb-3">Publishing</h3>
+                <h3 className="font-semibold mb-3">Xuất bản</h3>
                 <dl className="space-y-2.5 text-sm">
-                  <Row label="Status" value={<StatusBadge status={test.status} />} />
-                  <Row label="Published by" value={test.creator?.display_name ?? "—"} />
-                  <Row label="Published on" value={formatDate(test.published_at)} />
-                  <Row label="Version" value={<span className="font-mono text-xs">{test.updated_at ?? "—"}</span>} />
+                  <Row label="Trạng thái" value={<StatusBadge status={test.status} />} />
+                  <Row label="Được xuất bản bởi" value={test.creator?.display_name ?? "—"} />
+                  <Row label="Ngày xuất bản" value={formatDate(test.published_at)} />
+                  <Row label="Phiên bản" value={<span className="font-mono text-xs">{test.updated_at ?? "—"}</span>} />
                 </dl>
               </Card>
 
               <Card className="p-5">
-                <h3 className="font-semibold mb-3">Metadata</h3>
+                <h3 className="font-semibold mb-3">Siêu dữ liệu</h3>
                 <dl className="space-y-2.5 text-sm">
-                  <Row label="Test ID" value={<span className="font-mono text-xs">{test.id}</span>} />
-                  <Row label="Tenant ID" value={<span className="font-mono text-xs">{test.tenant_id ?? "—"}</span>} />
-                  <Row label="Created by" value={test.creator?.display_name ?? test.created_by ?? "—"} />
-                  <Row label="Created at" value={formatDate(test.created_at)} />
+                  <Row label="ID bài kiểm tra" value={<span className="font-mono text-xs">{test.id}</span>} />
+                  <Row label="ID tenant" value={<span className="font-mono text-xs">{test.tenant_id ?? "—"}</span>} />
+                  <Row label="Người tạo" value={test.creator?.display_name ?? test.created_by ?? "—"} />
+                  <Row label="Ngày tạo" value={formatDate(test.created_at)} />
                 </dl>
               </Card>
 
               <Card className="p-5">
-                <h3 className="font-semibold mb-3">Read only rule</h3>
+                <h3 className="font-semibold mb-3">Quy tắc chỉ đọc</h3>
                 <div className="flex items-center gap-2 text-sm">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span>
-                    {isPublished ? "This test is published and locked." : "This test is still editable."}
+                    {isPublished ? "Bài kiểm tra này đã xuất bản và bị khóa." : "Bài kiểm tra này vẫn có thể chỉnh sửa."}
                   </span>
                 </div>
               </Card>
@@ -216,14 +216,14 @@ function StatusBadge({ status }: { status: string }) {
   if (status === "published") {
     return (
       <Badge className="bg-success/20 text-success border-success/30" variant="outline">
-        Published
+        Đã xuất bản
       </Badge>
     );
   }
 
   return (
     <Badge variant="outline" className="bg-muted text-muted-foreground">
-      Draft
+      Bản nháp
     </Badge>
   );
 }

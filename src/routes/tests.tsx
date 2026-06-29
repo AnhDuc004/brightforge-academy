@@ -11,7 +11,7 @@ import { deleteTest, listAllTests, publishTest, type TestResource } from "@/lib/
 import { parseApiError } from "@/lib/auth";
 
 export const Route = createFileRoute("/tests")({
-  head: () => ({ meta: [{ title: "Tests · ExamForge" }] }),
+  head: () => ({ meta: [{ title: "Bài kiểm tra · ExamForge" }] }),
   component: TestsPage,
 });
 
@@ -37,7 +37,7 @@ function TestsPage() {
   const publishMutation = useMutation({
     mutationFn: publishTest,
     onSuccess: async () => {
-      toast.success("Test published successfully.");
+      toast.success("Đã xuất bản bài kiểm tra thành công.");
       await queryClient.invalidateQueries({ queryKey: ["tests"] });
     },
     onError: (error) => {
@@ -48,7 +48,7 @@ function TestsPage() {
   const deleteMutation = useMutation({
     mutationFn: deleteTest,
     onSuccess: async () => {
-      toast.success("Test deleted successfully.");
+      toast.success("Đã xóa bài kiểm tra thành công.");
       await queryClient.invalidateQueries({ queryKey: ["tests"] });
     },
     onError: (error) => {
@@ -73,19 +73,19 @@ function TestsPage() {
 
   return (
     <AppLayout
-      breadcrumbs={[{ label: "Test Builder" }, { label: "Tests" }]}
-      title="Tests"
-      description="Build, publish, and assign tests. Published tests snapshot their questions so edits later won't change what students see."
+      breadcrumbs={[{ label: "Trình tạo đề" }, { label: "Bài kiểm tra" }]}
+      title="Bài kiểm tra"
+      description="Tạo, xuất bản và phân công bài kiểm tra. Khi đã xuất bản, câu hỏi sẽ được chụp lại để các chỉnh sửa sau này không làm thay đổi nội dung học viên thấy."
       actions={
         <>
           <Link to="/tests/builder">
             <Button variant="outline" size="sm">
-              <Wrench className="h-4 w-4 mr-1.5" /> Open builder
+              <Wrench className="h-4 w-4 mr-1.5" /> Mở trình tạo
             </Button>
           </Link>
           <Link to="/tests/builder">
             <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90">
-              <Plus className="h-4 w-4 mr-1.5" /> New test
+              <Plus className="h-4 w-4 mr-1.5" /> Tạo bài kiểm tra
             </Button>
           </Link>
         </>
@@ -93,27 +93,27 @@ function TestsPage() {
     >
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Card className="p-4">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground">Total tests</div>
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">Tổng số bài kiểm tra</div>
           <div className="mt-1 text-2xl font-semibold tracking-tight">{stats.total}</div>
         </Card>
         <Card className="p-4">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground">Drafts</div>
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">Bản nháp</div>
           <div className="mt-1 text-2xl font-semibold tracking-tight">{stats.drafts}</div>
         </Card>
         <Card className="p-4">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground">Published</div>
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">Đã xuất bản</div>
           <div className="mt-1 text-2xl font-semibold tracking-tight">{stats.published}</div>
         </Card>
         <Card className="p-4">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground">Questions used</div>
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">Số câu hỏi dùng</div>
           <div className="mt-1 text-2xl font-semibold tracking-tight">{stats.questions}</div>
         </Card>
       </div>
 
       {testsQuery.isLoading ? (
-        <Card className="p-8 text-sm text-muted-foreground">Loading tests from BE...</Card>
+        <Card className="p-8 text-sm text-muted-foreground">Đang tải bài kiểm tra từ BE...</Card>
       ) : testsQuery.error ? (
-        <Card className="p-8 text-sm text-destructive">Không tải được danh sách test từ BE.</Card>
+        <Card className="p-8 text-sm text-destructive">Không tải được danh sách bài kiểm tra từ BE.</Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {tests.map((test) => (
@@ -137,7 +137,7 @@ function TestsPage() {
                     void deleteMutation.mutateAsync(test.id);
                   }}
                   disabled={test.status !== "draft" || deleteMutation.isPending}
-                  title={test.status === "draft" ? "Delete draft" : "Published tests are read-only"}
+                  title={test.status === "draft" ? "Xóa bản nháp" : "Bài kiểm tra đã xuất bản chỉ đọc"}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -152,28 +152,28 @@ function TestsPage() {
                 <div className="rounded-md bg-muted/40 py-2">
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center justify-center gap-1">
                     <Clock className="h-3 w-3" />
-                    Duration
+                    Thời lượng
                   </div>
                   <div className="text-sm font-semibold mt-0.5">{Math.max(1, Math.round(test.duration_seconds / 60))}m</div>
                 </div>
                 <div className="rounded-md bg-muted/40 py-2">
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center justify-center gap-1">
                     <FileText className="h-3 w-3" />
-                    Questions
+                    Câu hỏi
                   </div>
                   <div className="text-sm font-semibold mt-0.5">{sectionQuestionCount(test)}</div>
                 </div>
                 <div className="rounded-md bg-muted/40 py-2">
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center justify-center gap-1">
                     <Layers3 className="h-3 w-3" />
-                    Sections
+                    Các phần
                   </div>
                   <div className="text-sm font-semibold mt-0.5">{test.sections.length}</div>
                 </div>
                 <div className="rounded-md bg-muted/40 py-2">
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center justify-center gap-1">
                     <User className="h-3 w-3" />
-                    Creator
+                    Người tạo
                   </div>
                   <div className="text-xs font-semibold mt-0.5 truncate px-1">
                     {test.creator?.display_name ?? "—"}
@@ -191,7 +191,7 @@ function TestsPage() {
               <div className="mt-4 flex gap-2">
                 <Link to="/tests/$id" params={{ id: test.id }} className="flex-1">
                   <Button variant="outline" size="sm" className="w-full">
-                    View details
+                    Xem chi tiết
                   </Button>
                 </Link>
                 {test.status !== "published" && (
@@ -204,7 +204,7 @@ function TestsPage() {
                     }}
                   >
                     <Send className="h-3.5 w-3.5 mr-1" />
-                    Publish
+                    Xuất bản
                   </Button>
                 )}
               </div>

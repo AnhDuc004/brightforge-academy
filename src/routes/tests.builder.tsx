@@ -45,7 +45,7 @@ export const Route = createFileRoute("/tests/builder")({
   validateSearch: z.object({
     testId: z.string().optional(),
   }),
-  head: () => ({ meta: [{ title: "Test builder · ExamForge" }] }),
+  head: () => ({ meta: [{ title: "Trình tạo bài kiểm tra · ExamForge" }] }),
   component: TestBuilder,
 });
 
@@ -127,27 +127,27 @@ function firstErrorMessage(error: z.ZodError) {
 }
 
 const testSchema = z.object({
-  title: z.string().trim().min(1, "Title is required."),
+  title: z.string().trim().min(1, "Tiêu đề là bắt buộc."),
   description: z.string().trim().optional().nullable(),
-  duration_seconds: z.coerce.number().int("Duration must be an integer.").min(1, "Duration must be at least 1 second."),
-  passing_score: z.coerce.number().int("Passing score must be an integer.").min(0, "Passing score must be 0 or greater."),
+  duration_seconds: z.coerce.number().int("Thời lượng phải là số nguyên.").min(1, "Thời lượng phải ít nhất 1 giây."),
+  passing_score: z.coerce.number().int("Điểm đạt phải là số nguyên.").min(0, "Điểm đạt phải lớn hơn hoặc bằng 0."),
 });
 
 const sectionSchema = z.object({
-  title: z.string().trim().min(1, "Section title is required."),
+  title: z.string().trim().min(1, "Tiêu đề phần là bắt buộc."),
   instructions: z.string().trim().optional().nullable(),
-  position: z.coerce.number().int("Position must be an integer.").min(1, "Position must be at least 1."),
+  position: z.coerce.number().int("Vị trí phải là số nguyên.").min(1, "Vị trí phải ít nhất là 1."),
 });
 
 const questionSchema = z.object({
-  position: z.coerce.number().int("Position must be an integer.").min(1, "Position must be at least 1."),
-  score_override: z.coerce.number().int("Score must be an integer.").min(0, "Score must be 0 or greater.").nullable(),
+  position: z.coerce.number().int("Vị trí phải là số nguyên.").min(1, "Vị trí phải ít nhất là 1."),
+  score_override: z.coerce.number().int("Điểm phải là số nguyên.").min(0, "Điểm phải lớn hơn hoặc bằng 0.").nullable(),
 });
 
 const attachSchema = z.object({
-  question_id: z.string().trim().min(1, "Please choose a question."),
-  position: z.coerce.number().int("Position must be an integer.").min(1, "Position must be at least 1."),
-  score_override: z.coerce.number().int("Score must be an integer.").min(0, "Score must be 0 or greater.").nullable(),
+  question_id: z.string().trim().min(1, "Vui lòng chọn một câu hỏi."),
+  position: z.coerce.number().int("Vị trí phải là số nguyên.").min(1, "Vị trí phải ít nhất là 1."),
+  score_override: z.coerce.number().int("Điểm phải là số nguyên.").min(0, "Điểm phải lớn hơn hoặc bằng 0.").nullable(),
 });
 
 function TestBuilder() {
@@ -335,7 +335,7 @@ function TestBuilder() {
     mutationFn: async () => {
       const payload = validateTestForm();
       if (!payload) {
-        throw new Error("Please fix the highlighted fields.");
+        throw new Error("Vui lòng sửa các trường được đánh dấu.");
       }
 
       if (testId) {
@@ -345,7 +345,7 @@ function TestBuilder() {
       return createTest(payload);
     },
     onSuccess: async (saved) => {
-      toast.success(testId ? "Test updated successfully." : "Test created successfully.");
+      toast.success(testId ? "Đã cập nhật bài kiểm tra thành công." : "Đã tạo bài kiểm tra thành công.");
       await refresh();
       if (!testId && saved?.id) {
         await router.navigate({
@@ -362,7 +362,7 @@ function TestBuilder() {
   const publishMutation = useMutation({
     mutationFn: () => publishTest(testId ?? ""),
     onSuccess: async () => {
-      toast.success("Test published successfully.");
+      toast.success("Đã xuất bản bài kiểm tra thành công.");
       await refresh();
     },
     onError: (error) => {
@@ -380,7 +380,7 @@ function TestBuilder() {
       });
       if (!parsed.success) {
         setNewSectionErrors(firstErrorMessage(parsed.error) as Partial<Record<"title" | "instructions" | "position", string>>);
-        throw new Error("Please fix the highlighted fields.");
+        throw new Error("Vui lòng sửa các trường được đánh dấu.");
       }
       setNewSectionErrors({});
       return addSection(testId, {
@@ -390,7 +390,7 @@ function TestBuilder() {
       });
     },
     onSuccess: async () => {
-      toast.success("Section added successfully.");
+      toast.success("Đã thêm phần thành công.");
       setNewSectionForm((current) => ({
         ...current,
         title: "",
@@ -406,10 +406,10 @@ function TestBuilder() {
 
   const updateSectionMutation = useMutation({
     mutationFn: async ({ sectionId, payload }: { sectionId: string; payload: SectionFormState }) => {
-      if (!testId) throw new Error("Missing test ID.");
+      if (!testId) throw new Error("Thiếu ID bài kiểm tra.");
       const parsed = validateSectionForm(sectionId, payload);
       if (!parsed) {
-        throw new Error("Please fix the highlighted fields.");
+        throw new Error("Vui lòng sửa các trường được đánh dấu.");
       }
       return updateSection(testId, sectionId, {
         title: parsed.title,
@@ -418,7 +418,7 @@ function TestBuilder() {
       });
     },
     onSuccess: async () => {
-      toast.success("Section updated successfully.");
+      toast.success("Đã cập nhật phần thành công.");
       await refresh();
     },
     onError: (error) => {
@@ -428,11 +428,11 @@ function TestBuilder() {
 
   const deleteSectionMutation = useMutation({
     mutationFn: async (sectionId: string) => {
-      if (!testId) throw new Error("Missing test ID.");
+      if (!testId) throw new Error("Thiếu ID bài kiểm tra.");
       return deleteSection(testId, sectionId);
     },
     onSuccess: async () => {
-      toast.success("Section deleted successfully.");
+      toast.success("Đã xóa phần thành công.");
       await refresh();
     },
     onError: (error) => {
@@ -442,10 +442,10 @@ function TestBuilder() {
 
   const attachQuestionMutation = useMutation({
     mutationFn: async ({ sectionId, payload }: { sectionId: string; payload: AttachFormState }) => {
-      if (!testId) throw new Error("Missing test ID.");
+      if (!testId) throw new Error("Thiếu ID bài kiểm tra.");
       const parsed = validateAttachForm(sectionId, payload);
       if (!parsed) {
-        throw new Error("Please fix the highlighted fields.");
+        throw new Error("Vui lòng sửa các trường được đánh dấu.");
       }
       return attachQuestionToSection(testId, sectionId, {
         question_id: parsed.question_id,
@@ -454,7 +454,7 @@ function TestBuilder() {
       });
     },
     onSuccess: async () => {
-      toast.success("Question attached successfully.");
+      toast.success("Đã gắn câu hỏi thành công.");
       await refresh();
     },
     onError: (error) => {
@@ -472,10 +472,10 @@ function TestBuilder() {
       sectionQuestionId: string;
       payload: QuestionFormState;
     }) => {
-      if (!testId) throw new Error("Missing test ID.");
+      if (!testId) throw new Error("Thiếu ID bài kiểm tra.");
       const parsed = validateQuestionForm(sectionQuestionId, payload);
       if (!parsed) {
-        throw new Error("Please fix the highlighted fields.");
+        throw new Error("Vui lòng sửa các trường được đánh dấu.");
       }
       return updateSectionQuestion(testId, sectionId, sectionQuestionId, {
         position: parsed.position,
@@ -483,7 +483,7 @@ function TestBuilder() {
       });
     },
     onSuccess: async () => {
-      toast.success("Question updated successfully.");
+      toast.success("Đã cập nhật câu hỏi thành công.");
       await refresh();
     },
     onError: (error) => {
@@ -493,11 +493,11 @@ function TestBuilder() {
 
   const deleteQuestionMutation = useMutation({
     mutationFn: async ({ sectionId, sectionQuestionId }: { sectionId: string; sectionQuestionId: string }) => {
-      if (!testId) throw new Error("Missing test ID.");
+      if (!testId) throw new Error("Thiếu ID bài kiểm tra.");
       return removeQuestionFromSection(testId, sectionId, sectionQuestionId);
     },
     onSuccess: async () => {
-      toast.success("Question removed successfully.");
+      toast.success("Đã xóa câu hỏi khỏi phần thành công.");
       await refresh();
     },
     onError: (error) => {
@@ -564,14 +564,14 @@ function TestBuilder() {
 
   return (
     <AppLayout
-      breadcrumbs={[{ label: "Tests", to: "/tests" }, { label: "Builder" }]}
-      title={test?.title ?? "New test"}
+      breadcrumbs={[{ label: "Bài kiểm tra", to: "/tests" }, { label: "Trình tạo" }]}
+      title={test?.title ?? "Bài kiểm tra mới"}
       description={
         test
           ? isReadOnly
-            ? "Published test. Read-only after publish."
-            : "Draft test. Edit metadata, sections, and question mapping here."
-          : "Create a new draft test, then add sections and questions from the published question bank."
+            ? "Bài kiểm tra đã xuất bản. Chỉ đọc sau khi xuất bản."
+            : "Bài kiểm tra bản nháp. Chỉnh sửa siêu dữ liệu, phần và ánh xạ câu hỏi tại đây."
+          : "Tạo một bài kiểm tra nháp mới, sau đó thêm phần và câu hỏi từ ngân hàng câu hỏi đã xuất bản."
       }
       actions={
         <>
@@ -586,7 +586,7 @@ function TestBuilder() {
             ) : (
               <Save className="h-4 w-4" />
             )}
-            <span className="ml-1.5">{testId ? "Save draft" : "Create draft"}</span>
+            <span className="ml-1.5">{testId ? "Lưu bản nháp" : "Tạo bản nháp"}</span>
           </Button>
           {testId && !isReadOnly && (
             <Button
@@ -600,7 +600,7 @@ function TestBuilder() {
               ) : (
                 <Send className="h-4 w-4" />
               )}
-              <span className="ml-1.5">Publish</span>
+              <span className="ml-1.5">Xuất bản</span>
             </Button>
           )}
         </>
@@ -611,7 +611,7 @@ function TestBuilder() {
           <div className="p-4 border-b">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold flex items-center gap-2">
-                <FileText className="h-4 w-4 text-brand" /> Question bank
+                <FileText className="h-4 w-4 text-brand" /> Ngân hàng câu hỏi
               </h3>
               <Badge variant="secondary" className="font-mono text-[11px]">
                 {bankQuestions.length}
@@ -622,19 +622,19 @@ function TestBuilder() {
               <Input
                 value={bankSearch}
                 onChange={(event) => setBankSearch(event.target.value)}
-                placeholder="Search published questions..."
+                placeholder="Tìm câu hỏi đã xuất bản..."
                 className="pl-8 h-9"
               />
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
-              Only published questions can be attached to a test.
+              Chỉ câu hỏi đã xuất bản mới có thể được gắn vào bài kiểm tra.
             </p>
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
             {publishedQuestionsQuery.isLoading ? (
-              <div className="p-4 text-sm text-muted-foreground">Loading question bank...</div>
+              <div className="p-4 text-sm text-muted-foreground">Đang tải ngân hàng câu hỏi...</div>
             ) : publishedQuestions.length === 0 ? (
-              <div className="p-4 text-sm text-muted-foreground">No published questions matched your search.</div>
+              <div className="p-4 text-sm text-muted-foreground">Không có câu hỏi đã xuất bản nào khớp với tìm kiếm của bạn.</div>
             ) : (
               publishedQuestions.map((question: Question) => (
                 <div
@@ -662,20 +662,20 @@ function TestBuilder() {
           <Card className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <label className="text-sm font-medium">Title</label>
+                <label className="text-sm font-medium">Tiêu đề</label>
                 <Input
                   value={testForm.title}
                   onChange={(event) => {
                     setTestForm((current) => ({ ...current, title: event.target.value }));
                     setTestErrors((current) => ({ ...current, title: undefined }));
                   }}
-                  placeholder="Midterm English"
+                  placeholder="Giữa kỳ môn tiếng Anh"
                   className={testErrors.title ? "border-destructive focus-visible:ring-destructive" : ""}
                 />
                 {testErrors.title && <p className="text-xs text-destructive">{testErrors.title}</p>}
               </div>
               <div className="grid gap-2">
-                <label className="text-sm font-medium">Passing score</label>
+                <label className="text-sm font-medium">Điểm đạt</label>
                 <Input
                   type="number"
                   min="0"
@@ -689,20 +689,20 @@ function TestBuilder() {
                 {testErrors.passing_score && <p className="text-xs text-destructive">{testErrors.passing_score}</p>}
               </div>
               <div className="grid gap-2 md:col-span-2">
-                <label className="text-sm font-medium">Description</label>
+                <label className="text-sm font-medium">Mô tả</label>
                 <Textarea
                   value={testForm.description}
                   onChange={(event) => {
                     setTestForm((current) => ({ ...current, description: event.target.value }));
                     setTestErrors((current) => ({ ...current, description: undefined }));
                   }}
-                  placeholder="Midterm test"
+                  placeholder="Bài kiểm tra giữa kỳ"
                   className={`min-h-24 ${testErrors.description ? "border-destructive focus-visible:ring-destructive" : ""}`}
                 />
                 {testErrors.description && <p className="text-xs text-destructive">{testErrors.description}</p>}
               </div>
               <div className="grid gap-2">
-                <label className="text-sm font-medium">Duration in seconds</label>
+                <label className="text-sm font-medium">Thời lượng tính bằng giây</label>
                 <Input
                   type="number"
                   min="1"
@@ -717,7 +717,7 @@ function TestBuilder() {
               </div>
               <div className="flex items-end justify-between gap-3">
                 <div className="text-xs text-muted-foreground">
-                  Publishing freezes the snapshot of every section question.
+                  Việc xuất bản sẽ cố định ảnh chụp của mọi câu hỏi trong từng phần.
                 </div>
                 <Button
                   variant="outline"
@@ -730,7 +730,7 @@ function TestBuilder() {
                   ) : (
                     <Pencil className="h-4 w-4" />
                   )}
-                  <span className="ml-1.5">{testId ? "Save metadata" : "Create test"}</span>
+                  <span className="ml-1.5">{testId ? "Lưu siêu dữ liệu" : "Tạo bài kiểm tra"}</span>
                 </Button>
               </div>
             </div>
@@ -738,16 +738,16 @@ function TestBuilder() {
 
           <Card className="p-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-              <Stat label="Total sections" value={String(test?.sections.length ?? 0)} />
-              <Stat label="Total questions" value={String(totalQuestions)} />
-              <Stat label="Duration" value={`${Math.max(1, Math.round(Number(testForm.duration_seconds || 0) / 60))} min`} />
-              <Stat label="Passing" value={`${testForm.passing_score || 0}%`} />
+              <Stat label="Tổng số phần" value={String(test?.sections.length ?? 0)} />
+              <Stat label="Tổng số câu hỏi" value={String(totalQuestions)} />
+              <Stat label="Thời lượng" value={`${Math.max(1, Math.round(Number(testForm.duration_seconds || 0) / 60))} phút`} />
+              <Stat label="Điểm đạt" value={`${testForm.passing_score || 0}%`} />
             </div>
             <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-md bg-brand/10 border border-brand/30 text-xs">
               <Lock className="h-3.5 w-3.5 text-foreground" />
               <span>
-                <strong>Snapshot mode.</strong> Questions are copied from the published bank and later edits in the bank
-                won't change this test.
+                <strong>Chế độ ảnh chụp.</strong> Câu hỏi được sao chép từ ngân hàng đã xuất bản và các chỉnh sửa sau này trong ngân hàng
+                sẽ không thay đổi bài kiểm tra này.
               </span>
             </div>
           </Card>
@@ -784,7 +784,7 @@ function TestBuilder() {
                       disabled={isReadOnly}
                     />
                     <Badge variant="secondary" className="font-mono text-[10px]">
-                      {sortedQuestions.length} questions
+                      {sortedQuestions.length} câu hỏi
                     </Badge>
                     <Button
                       type="button"
@@ -820,7 +820,7 @@ function TestBuilder() {
 
                   <div className="p-4 border-b grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="grid gap-1.5">
-                      <label className="text-xs font-medium text-muted-foreground">Title</label>
+                      <label className="text-xs font-medium text-muted-foreground">Tiêu đề</label>
                       <Input
                         value={sectionDraft.title}
                         onChange={(event) => {
@@ -839,7 +839,7 @@ function TestBuilder() {
                       {sectionError.title && <p className="text-xs text-destructive">{sectionError.title}</p>}
                     </div>
                     <div className="grid gap-1.5">
-                      <label className="text-xs font-medium text-muted-foreground">Position</label>
+                      <label className="text-xs font-medium text-muted-foreground">Vị trí</label>
                       <Input
                         type="number"
                         min="1"
@@ -860,7 +860,7 @@ function TestBuilder() {
                       {sectionError.position && <p className="text-xs text-destructive">{sectionError.position}</p>}
                     </div>
                     <div className="grid gap-1.5 md:col-span-3">
-                      <label className="text-xs font-medium text-muted-foreground">Instructions</label>
+                      <label className="text-xs font-medium text-muted-foreground">Hướng dẫn</label>
                       <Textarea
                         value={sectionDraft.instructions}
                         onChange={(event) => {
@@ -890,7 +890,7 @@ function TestBuilder() {
                         ) : (
                           <Save className="h-4 w-4" />
                         )}
-                        <span className="ml-1.5">Save section</span>
+                        <span className="ml-1.5">Lưu phần</span>
                       </Button>
                     </div>
                   </div>
@@ -916,7 +916,7 @@ function TestBuilder() {
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5 text-xs">
-                            <span className="text-muted-foreground">Pos</span>
+                            <span className="text-muted-foreground">Vị trí</span>
                             <Input
                               type="number"
                               min="1"
@@ -934,7 +934,7 @@ function TestBuilder() {
                               className={`h-7 w-16 text-center ${questionError.position ? "border-destructive focus-visible:ring-destructive" : ""}`}
                               disabled={isReadOnly}
                             />
-                            <span className="text-muted-foreground">Score</span>
+                            <span className="text-muted-foreground">Điểm</span>
                             <Input
                               type="number"
                               value={draft.score_override}
@@ -1014,7 +1014,7 @@ function TestBuilder() {
 
                   <div className="border-t bg-muted/20 p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
                     <div className="md:col-span-2 grid gap-1.5">
-                      <label className="text-xs font-medium text-muted-foreground">Attach question</label>
+                      <label className="text-xs font-medium text-muted-foreground">Gắn câu hỏi</label>
                       <Select
                         value={attachDraft.question_id}
                         onValueChange={(value) =>
@@ -1026,7 +1026,7 @@ function TestBuilder() {
                         disabled={isReadOnly}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="Choose a published question" />
+                          <SelectValue placeholder="Chọn một câu hỏi đã xuất bản" />
                         </SelectTrigger>
                         <SelectContent>
                           {bankQuestions.map((question) => (
@@ -1039,7 +1039,7 @@ function TestBuilder() {
                       {attachError.question_id && <p className="text-xs text-destructive">{attachError.question_id}</p>}
                     </div>
                     <div className="grid gap-1.5">
-                      <label className="text-xs font-medium text-muted-foreground">Position</label>
+                      <label className="text-xs font-medium text-muted-foreground">Vị trí</label>
                       <Input
                         type="number"
                         min="1"
@@ -1060,7 +1060,7 @@ function TestBuilder() {
                       {attachError.position && <p className="text-xs text-destructive">{attachError.position}</p>}
                     </div>
                     <div className="grid gap-1.5">
-                      <label className="text-xs font-medium text-muted-foreground">Score override</label>
+                      <label className="text-xs font-medium text-muted-foreground">Điểm ghi đè</label>
                       <Input
                         type="number"
                         value={attachDraft.score_override}
@@ -1092,7 +1092,7 @@ function TestBuilder() {
                         }
                       >
                         <Plus className="h-3.5 w-3.5 mr-1.5" />
-                        Attach question
+                        Gắn câu hỏi
                       </Button>
                     </div>
                   </div>
@@ -1104,20 +1104,20 @@ function TestBuilder() {
               <Card className="p-4 border-dashed">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                   <div className="grid gap-1.5 md:col-span-2">
-                    <label className="text-xs font-medium text-muted-foreground">New section title</label>
+                    <label className="text-xs font-medium text-muted-foreground">Tiêu đề phần mới</label>
                     <Input
                       value={newSectionForm.title}
                       onChange={(event) => {
                         setNewSectionForm((current) => ({ ...current, title: event.target.value }));
                         setNewSectionErrors((current) => ({ ...current, title: undefined }));
                       }}
-                      placeholder="Part 1"
+                      placeholder="Phần 1"
                       className={newSectionErrors.title ? "border-destructive focus-visible:ring-destructive" : ""}
                     />
                     {newSectionErrors.title && <p className="text-xs text-destructive">{newSectionErrors.title}</p>}
                   </div>
                   <div className="grid gap-1.5">
-                    <label className="text-xs font-medium text-muted-foreground">Position</label>
+                    <label className="text-xs font-medium text-muted-foreground">Vị trí</label>
                     <Input
                       type="number"
                       min="1"
@@ -1131,7 +1131,7 @@ function TestBuilder() {
                     {newSectionErrors.position && <p className="text-xs text-destructive">{newSectionErrors.position}</p>}
                   </div>
                   <div className="grid gap-1.5 md:col-span-4">
-                    <label className="text-xs font-medium text-muted-foreground">Instructions</label>
+                    <label className="text-xs font-medium text-muted-foreground">Hướng dẫn</label>
                     <Textarea
                       value={newSectionForm.instructions}
                       onChange={(event) => {
@@ -1154,13 +1154,13 @@ function TestBuilder() {
                       ) : (
                         <Plus className="h-4 w-4" />
                       )}
-                      <span className="ml-1.5">Add section</span>
+                      <span className="ml-1.5">Thêm phần</span>
                     </Button>
                   </div>
                 </div>
                 {!testId && (
                   <p className="mt-3 text-xs text-muted-foreground">
-                    Save the draft first to enable section and question management.
+                    Hãy lưu bản nháp trước để bật quản lý phần và câu hỏi.
                   </p>
                 )}
               </Card>

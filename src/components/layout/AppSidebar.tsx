@@ -72,7 +72,7 @@ export function AppSidebar() {
         </div>
         <div className="leading-tight">
           <div className="text-[15px] font-semibold tracking-tight">ExamForge</div>
-          <div className="text-[11px] text-sidebar-foreground/60">Enterprise LMS</div>
+          <div className="text-[11px] text-sidebar-foreground/60">Hệ thống LMS doanh nghiệp</div>
         </div>
       </div>
 
@@ -112,8 +112,8 @@ export function AppSidebar() {
         <div className="flex items-center gap-2 rounded-md bg-sidebar-accent/50 px-2.5 py-2">
           <Wrench className="h-4 w-4 text-brand" />
           <div className="text-[11px] leading-tight">
-            <div className="font-medium">v4.2.0 · Enterprise</div>
-            <div className="text-sidebar-foreground/55">All systems operational</div>
+            <div className="font-medium">v4.2.0 · Doanh nghiệp</div>
+            <div className="text-sidebar-foreground/55">Mọi hệ thống đang hoạt động</div>
           </div>
         </div>
       </div>

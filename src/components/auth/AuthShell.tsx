@@ -49,7 +49,7 @@ const features = [
       </svg>
     ),
     label: "Phân tích kết quả",
-    sub: "Báo cáo chi tiết giúp học sinh biết đúng chỗ cần cải thiện.",
+    sub: "Báo cáo chi tiết giúp học viên biết đúng chỗ cần cải thiện.",
   },
 ];
 
@@ -209,7 +209,7 @@ export function AuthShell({
                 <span className="text-brand">kết quả vượt trội.</span>
               </h1>
               <p className="mt-3 text-sm leading-7 text-white/60">
-                Cùng hàng nghìn học sinh và giảng viên đang sử dụng ExamForge để tạo đề thi, luyện tập và theo dõi tiến trình học tập mỗi ngày.
+                Cùng hàng nghìn học viên và giảng viên đang sử dụng ExamForge để tạo đề thi, luyện tập và theo dõi tiến trình học tập mỗi ngày.
               </p>
             </div>
 
@@ -234,8 +234,8 @@ export function AuthShell({
 
           {/* Bottom stat strip */}
           <div className="relative z-10 mt-5 flex items-center gap-6 border-t border-white/10 pt-5">
-            {[
-              { num: "12k+", label: "Học sinh" },
+              {[
+              { num: "12k+", label: "Học viên" },
               { num: "800+", label: "Đề thi" },
               { num: "98%", label: "Hài lòng" },
             ].map((s) => (
